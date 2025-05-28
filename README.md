@@ -1,8 +1,6 @@
 
 # MOLT4 Mutation Analysis and Peptide Extraction Pipeline
 
----
-
 ## Overview
 
 This pipeline processes mutation data for the MOLT4 cell line. It performs:
@@ -14,8 +12,6 @@ This pipeline processes mutation data for the MOLT4 cell line. It performs:
 5. **Extracting** peptides around mutation sites (using K/R cleavage logic)  
 6. **Saving** annotated outputs in FASTA and CSV formats  
 7. **Verifying** peptide correctness through position and boundary checks
-
----
 
 ## Dependencies
 
@@ -33,8 +29,6 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr"))
   - `Variant Info`: must contain `"missense_variant"`
   - `Protein.Change`: mutation in format like `p.P750Q`
   - `Gene`: gene name (e.g., TP53)
-
----
 
 ## Output
 
