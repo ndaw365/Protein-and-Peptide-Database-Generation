@@ -82,6 +82,12 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr"))
 - Validates mutation position
 - Ensures the mutation is reflected in the peptide
 
+## FASTA Header Example (forward strand) for protein database:
+>Fwd_spP750Q|Q5SV97-1|PERM1_P750Q OS=Homo sapiens GN=PERM1P750Q (Sequence)
+
+## FASTA Header Example (forward strand) for peptide database:
+>Fwd_spP750Q|Q5SV97-1|PERM1_P750Q OS=Homo sapiens GN=PERM1 (Truncated Sequence)
+
 
 
 
