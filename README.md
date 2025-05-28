@@ -23,12 +23,15 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr"))
 
 ## Input
 
-- **`MOLT4 mutations.csv`**  
-  Required columns (case-insensitive):
-  - `Uniprot ID`: valid UniProt accession (e.g., P12345)
-  - `Variant Info`: must contain `"missense_variant"`
-  - `Protein.Change`: mutation in format like `p.P750Q`
-  - `Gene`: gene name (e.g., TP53)
+**Required File:**  
+`MOLT4 mutations.csv`
+
+**Required Columns (case-insensitive):**
+- `Uniprot ID`: UniProt accession (e.g., P12345)
+- `Variant Info`: Must include the string `"missense_variant"`
+- `Protein.Change`: Mutation notation (e.g., `p.P750Q`)
+- `Gene`: Gene symbol (e.g., `TP53`)
+
 
 ## Output
 
@@ -41,6 +44,43 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr"))
 | `MOLT4_mutated_peptide_database.fasta`   | FASTA-formatted peptides around mutations |
 | `MOLT4_peptide_data.csv`                 | Peptide details and positional metadata |
 
+
+## Usage Instructions
+
+1. Place `MOLT4 mutations.csv` in your working directory
+2. Open the R script or R Markdown file
+3. Run all code blocks from top to bottom (recommended: RStudio)
+4. Output files will be saved to your working directory
+
+## How the Code Works
+
+### 1. Canonical Sequence Retrieval
+
+- Filters for rows with valid UniProt ID and `missense_variant`
+- Fetches the canonical FASTA sequence from UniProt API
+- Adds it to the dataset
+
+### 2. Mutation Application
+
+- Parses mutations (e.g., `p.P750Q`)
+- Replaces the amino acid at the given position in the sequence
+- Validates original amino acid at the target site
+
+### 3. Reverse Sequence Generation
+
+- Generates reverse of mutated sequence
+
+### 4. Peptide Extraction
+
+- Locates the second K/R residue upstream and downstream of the mutation
+- Extracts peptide sequence from that window, inclusive of the K/R
+- Applied to both forward and reverse sequences
+
+### 5. Verification
+
+- Checks boundary correctness of extracted peptides
+- Validates mutation position
+- Ensures the mutation is reflected in the peptide
 
 
 
