@@ -38,7 +38,7 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr"))
 | `MOLT4_analysis_summary.csv`             | Summary of processing/filtering stats |
 | `MOLT4_mutated_protein_output.csv`       | Mutated forward/reverse protein sequences + metadata |
 | `MOLT4_mutated_protein_database.fasta`   | FASTA-formatted protein sequences (mutated) |
-| `MOLT4_mutated_peptide_database_CORRECTED.fasta` | FASTA-formatted peptides around mutations |
+| `MOLT4_mutated_peptide_database.fasta`   | FASTA-formatted peptides around mutations |
 | `MOLT4_peptide_data.csv`                 | Peptide details and positional metadata |
 
 
