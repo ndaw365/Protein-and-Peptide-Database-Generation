@@ -542,7 +542,7 @@ write_peptide_fasta <- function(data, output_file) {
 }
 
 # Output peptide FASTA file
-output_peptide_fasta <- "MOLT4_mutated_peptide_database_CORRECTED.fasta"
+output_peptide_fasta <- "MOLT4_mutated_peptide_database.fasta"
 
 # Generate peptide FASTA file
 write_peptide_fasta(valid_peptides, output_peptide_fasta)
