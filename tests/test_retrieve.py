@@ -61,3 +61,41 @@ def test_filter_variants(index):
     assert hotspots and all(r["depmap"]["Hotspot"] == "True" for r in hotspots)
     stops = index.filter_variants(gene="TP53", variant_type="stop_gained")
     assert [r["protein_change"] for r in stops] == ["p.R306Ter"]
+
+
+def test_clinvar_filter_does_not_match_alphamissense_or_likely_terms(index):
+    # Regression: "pathogenic" used to match AHDC1 D1169N through "AM class: likely_pathogenic"
+    records = index.filter_variants(clinvar_significance="pathogenic", limit=500)
+    assert records
+    assert "AHDC1" not in {r["gene"] for r in records}
+    for r in records:
+        sources = [r["depmap"].get("Vep Clin Sig", "")] + [c["significance"] for c in r["clinvar"]]
+        assert any("pathogenic" in s.lower().replace(" ", "_").replace("/", "&").split("&")
+                   for s in sources), r["card"]
+
+
+def test_benign_filter_excludes_likely_benign(index):
+    records = index.filter_variants(clinvar_significance="benign", limit=500)
+    assert [r["gene"] for r in records] == ["MT-ND6"]  # the only plain "benign" call
+
+
+def test_filter_matches_indexed_clinvar_too(index):
+    # PERM1 P750Q has no DepMap ClinVar annotation; only the (synthetic) ClinVar fixture
+    genes = {r["gene"] for r in index.filter_variants(clinvar_significance="uncertain significance",
+                                                      limit=500)}
+    assert "PERM1" in genes
+
+
+def test_filter_flags_and_peptide_membership(index):
+    stk11 = index.filter_variants(gene="STK11", flag="hotspot")
+    assert [r["protein_change"] for r in stk11] == ["p.Q214Ter"]
+    not_in_db = index.filter_variants(gene="HELZ2", variant_type="missense_variant",
+                                      in_peptide_database=False)
+    assert "p.R563L" in [r["protein_change"] for r in not_in_db]
+
+
+def test_gene_only_question_lists_the_genes_variants(index):
+    result = index.retrieve("Show all variants in KMT2D", gene_limit=5)
+    assert result["mode"] == "exact"
+    assert result["total"] == 9 and len(result["records"]) == 5
+    assert {r["gene"] for r in result["records"]} == {"KMT2D"}

@@ -1,8 +1,8 @@
 import pytest
 
 from rag_assistant.ingest import parse_variant_header
-from rag_assistant.normalize import (chrom, find_protein_changes, find_rsids, protein_change_key,
-                                     rsid, uniprot_base)
+from rag_assistant.normalize import (chrom, find_protein_changes, find_rsids, has_term,
+                                     protein_change_key, rsid, terms, uniprot_base)
 
 
 @pytest.mark.parametrize("text, key", [
@@ -48,3 +48,23 @@ def test_parse_variant_header():
     assert parse_variant_header("Fwd_spD242N|P62136-1|PPP1CA_D242N OS=Homo sapiens") == ("PPP1CA", "D242N")
     assert parse_variant_header("Fwd_spA292T|Q9UHD8-1|SEPTIN9_A292T") == ("SEPTIN9", "A292T")
     assert parse_variant_header("Rev_spD242N|P62136-1|PPP1CA_D242N") is None  # decoy
+
+
+def test_terms_split_depmap_and_clinvar_spellings():
+    assert terms("pathogenic&likely_pathogenic") == {"pathogenic", "likely_pathogenic"}
+    assert terms("Pathogenic/Likely pathogenic") == {"pathogenic", "likely_pathogenic"}
+    assert terms("") == set() and terms(None) == set()
+
+
+@pytest.mark.parametrize("value, term, expected", [
+    ("pathogenic&likely_pathogenic", "pathogenic", 1),
+    ("uncertain_significance&likely_pathogenic", "pathogenic", 0),
+    ("likely_benign", "benign", 0),
+    ("Pathogenic/Likely pathogenic", "likely pathogenic", 1),
+    ("missense_variant&splice_region_variant", "missense_variant", 1),
+    ("Hotspot&Hess Driver", "hess driver", 1),
+    (None, "pathogenic", 0),
+    ("pathogenic", "", 0),
+])
+def test_has_term(value, term, expected):
+    assert has_term(value, term) == expected

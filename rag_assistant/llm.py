@@ -9,7 +9,7 @@ import json
 import re
 
 from . import config
-from .retrieve import Index
+from .retrieve import FLAG_FIELDS, Index
 
 SYSTEM_PROMPT = """You are a variant-lookup assistant for the MOLT4 T-ALL cell line.
 Answer ONLY from the retrieved records and tool results. Each fact in them carries a
@@ -24,6 +24,8 @@ Rules:
   release that was indexed. Say which one you used.
 - An MS hit supports a variant only when covers_variant is true; otherwise the
   detected peptide is identical to the wild-type protein.
+- If "total" is larger than the number of records, say the list is partial and how many
+  exist; use filter_variants or lookup_variant to fetch more when the question needs them.
 - Use the tools to look up more variants when the provided records are not enough.
 - Be concise."""
 
@@ -40,14 +42,15 @@ TOOLS = [
     }},
     {"type": "function", "function": {
         "name": "filter_variants",
-        "description": "List MOLT4 variants matching structured filters.",
+        "description": ("List MOLT4 variants matching structured filters. Annotation values match "
+                        "whole terms: 'pathogenic' does not include 'likely_pathogenic'; call "
+                        "twice to get both."),
         "parameters": {"type": "object", "properties": {
             "gene": {"type": "string"},
             "variant_type": {"type": "string", "description": "e.g. missense_variant, frameshift_variant, stop_gained"},
             "clinvar_significance": {"type": "string", "description": "e.g. pathogenic, likely_benign, uncertain_significance"},
             "am_class": {"type": "string", "description": "AlphaMissense class: likely_pathogenic, ambiguous, likely_benign"},
-            "flag": {"type": "string", "enum": ["Hotspot", "Hess Driver", "Likely LOF", "Oncogene High Impact",
-                                                "Tumor Suppressor High Impact"]},
+            "flag": {"type": "string", "enum": FLAG_FIELDS},
             "in_peptide_database": {"type": "boolean"},
             "limit": {"type": "integer", "default": 20},
         }},
@@ -140,6 +143,8 @@ def ask(question, index=None, provider=None, client_factory=_client, max_steps=6
     context = index.retrieve(question)
     context_payload = {"retrieval_mode": context["mode"], "entities": context["entities"],
                        "records": [_compact(r) for r in context["records"]]}
+    if "total" in context:
+        context_payload["total"] = context["total"]
 
     def run(client, name, chat_model, _embed):
         messages = [

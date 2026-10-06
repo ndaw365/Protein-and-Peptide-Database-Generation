@@ -1,0 +1,25 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests (synthetic ClinVar fixture, mocked LLM clients; no API keys needed)
+        run: python -m pytest -q
+      - name: Retrieval evaluation
+        run: |
+          python -m rag_assistant --db /tmp/variants.sqlite ingest --clinvar tests/fixtures/clinvar_sample.tsv
+          python eval/run.py --db /tmp/variants.sqlite

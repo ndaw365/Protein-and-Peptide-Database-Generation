@@ -3,7 +3,6 @@
 import json
 from types import SimpleNamespace
 
-import httpx
 import openai
 import pytest
 
@@ -13,6 +12,14 @@ from rag_assistant import config, llm
 def _message(content=None, tool_calls=None):
     return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
         content=content, tool_calls=tool_calls))])
+
+
+def _connection_error():
+    """An openai.APIConnectionError without building an HTTP request object (the HTTP
+    library behind openai differs between SDK versions)."""
+    err = openai.APIConnectionError.__new__(openai.APIConnectionError)
+    Exception.__init__(err, "Connection error.")
+    return err
 
 
 def _tool_call(name, args):
@@ -38,8 +45,7 @@ def both_keys(monkeypatch):
 
 
 def test_falls_back_to_gemini_when_openai_fails(index, both_keys):
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
-    openai_client = FakeClient(error=openai.APIConnectionError(request=request))
+    openai_client = FakeClient(error=_connection_error())
     gemini_client = FakeClient(replies=[
         _message(tool_calls=[_tool_call("lookup_variant", {"gene": "NRAS", "protein_change": "G12C"})]),
         _message(content="NRAS G12C is pathogenic in ClinVar [clinvar:VCV900001] and a hotspot "

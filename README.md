@@ -1,6 +1,8 @@
 
 # MOLT4 Mutation Analysis and Peptide Extraction Pipeline
 
+[![tests](https://github.com/ndaw365/Protein-and-Peptide-Database-Generation/actions/workflows/tests.yml/badge.svg)](https://github.com/ndaw365/Protein-and-Peptide-Database-Generation/actions/workflows/tests.yml)
+
 ## Overview
 
 This pipeline processes mutation data for the MOLT4 cell line. It performs:
@@ -27,11 +29,11 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 `MOLT4 mutations.csv`: the MOLT4 mutation table exported from the [DepMap portal](https://depmap.org/portal/)
 (cell line MOLT-4; GRCh38 coordinates with VEP, AlphaMissense, REVEL and DepMap's copy of ClinVar annotations).
 
-**Required Columns (case-insensitive):**
-- `Uniprot ID`: UniProt accession (e.g., P12345)
+**Required Columns:**
+- `Uniprot ID`: UniProt accession (e.g., `Q5SV97-1`); matched case-insensitively
 - `Variant Info`: Must include the string `"missense_variant"` (combined consequences such as
-  `missense_variant&splice_region_variant` are kept)
-- `Protein.Change`: Mutation notation (e.g., `p.P750Q`)
+  `missense_variant&splice_region_variant` are kept); matched case-insensitively
+- `Protein Change`: Mutation notation (e.g., `p.P750Q`); R reads it as `Protein.Change`
 - `Gene`: Gene symbol (e.g., `TP53`)
 
 
@@ -40,12 +42,13 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 | File Name                                | Description |
 |------------------------------------------|-------------|
 | `MOLT4_mutations_with_sequences.csv`     | Filtered entries + canonical sequences |
-| `MOLT4_analysis_summary.csv`             | Summary of processing/filtering stats |
+| `MOLT4_analysis_summary.csv`             | Variant counts at each step, from input rows to the peptide database |
 | `MOLT4_mutated_protein_output.csv`       | Mutated forward/reverse protein sequences + metadata |
 | `MOLT4_mutated_protein_database.fasta`   | FASTA-formatted protein sequences (mutated) |
 | `MOLT4_mutated_peptide_database.fasta`   | FASTA-formatted peptides around mutations |
 | `MOLT4_peptide_data.csv`                 | Peptide details and positional metadata |
 | `MOLT4_dropped_variants.csv`             | Missense variants left out of the databases, with the reason |
+| `MOLT4_variant_peptide_length_histogram.png` | Length distribution of the forward variant peptides |
 | `uniprot_sequence_cache.csv`             | Local cache of downloaded UniProt sequences (git-ignored) |
 
 
@@ -86,9 +89,17 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 
 ### 5. Verification
 
-- Checks boundary correctness of extracted peptides
-- Validates mutation position
-- Ensures the mutation is reflected in the peptide
+- Spot-checks a reproducible random sample of 5 variants (forward and reverse peptides):
+  K/R boundaries, mutation position, and that the mutated residue is in the peptide
+
+### 6. Peptide Length Distribution
+
+- Uses the same window as the peptide database (2nd K/R upstream to 2nd K/R downstream),
+  skipping the 104 variants with fewer than 2 K/R on one side, which leaves 1765 peptides
+- Counts forward peptides only: each reverse (decoy) peptide has the same length as its
+  forward peptide
+- Bins: below 7 aa (11, 0.6%), 7–50 aa (1349, 76.4%), above 50 aa (405, 22.9%). The plot's
+  x-axis stops at 100 aa, so the longest peptides are counted but not drawn
 
 ## FASTA Header Example (forward strand) for protein database:
 >Fwd_spP750Q|Q5SV97-1|PERM1_P750Q OS=Homo sapiens GN=PERM1 (Sequence)
@@ -103,6 +114,9 @@ with FragPipe, and the results were compared in
 [ndaw365/MOLT4-Checking](https://github.com/ndaw365/MOLT4-Checking). The peptide hits from that
 search (`matched_peptides_to_tryptic_peptides.tsv`) are copied here as
 `data_sources/MOLT4_detected_variant_peptides.tsv` so the assistant below can report them.
+
+That search used the database as it was before the filter fix (1810 variants), so the 59
+variants recovered by the fix have not been searched yet.
 
 Of the 41 target peptide hits, only 7 span the mutated residue (EVL D20N, COPS7B A224T,
 TUBA4A E77D, CDC45 E259K, DUSP7 R102C, BRD4 P1131A, P2RX4 Y378F). The other 34 match the
@@ -127,11 +141,18 @@ a source ID:
 How retrieval works:
 
 - **Exact lookup.** Gene + protein change in 1- or 3-letter HGVS (`P750Q`, `p.Pro750Gln`,
-  `R306Ter`, `K267fs`), dbSNP rsID, or UniProt accession. This needs no model.
+  `R306Ter`, `K267fs`), dbSNP rsID, or UniProt accession. This needs no model. A question
+  that names a gene but no change ("all variants in KMT2D") lists that gene's variants.
+- **Filters** (ClinVar significance, AlphaMissense class, variant type, DepMap flags such as
+  Hotspot) match whole terms: `pathogenic` matches `pathogenic&likely_pathogenic` but not
+  `likely_pathogenic`, and never matches a different annotation field.
 - **ClinVar matching.** A variant is linked to ClinVar by the same GRCh38 allele first,
   then the same rsID, then the same gene + protein change. The match type is reported.
 - **Free-text questions** use BM25 keyword search over one summary per variant, combined
-  with vector search when embeddings have been built.
+  with vector search when embeddings have been built. Embeddings are stored in the index
+  and saved in batches, so a rate limit or network error never loses the index or the
+  embeddings already made: run `python -m rag_assistant embed` again to continue.
+  Rebuilding the index keeps the embeddings of variants whose summary did not change.
 - **Answers.** The LLM gets the retrieved records plus lookup tools. It must cite source IDs,
   and any citation that was not actually retrieved is flagged. OpenAI is used first; if
   there is no `OPENAI_API_KEY` or the call fails, the same request goes to Gemini through
@@ -139,10 +160,13 @@ How retrieval works:
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add OPENAI_API_KEY and/or GEMINI_API_KEY, then: set -a; source .env
+cp .env.example .env   # then put your OPENAI_API_KEY and/or GEMINI_API_KEY in .env
+                       # (.env is git-ignored and loaded automatically; keys exported
+                       #  in the shell take priority)
 
 python -m rag_assistant ingest                       # downloads ClinVar from NCBI (~400 MB)
 python -m rag_assistant ingest --clinvar variant_summary.txt.gz --embed
+python -m rag_assistant embed                        # resume embedding after a rate limit
 # optional: --gene-effect CRISPRGeneEffect.csv --depmap-model <MOLT4 ACH- ID from DepMap Model.csv>
 
 python -m rag_assistant lookup NRAS p.Gly12Cys       # exact lookup, no LLM
@@ -156,7 +180,8 @@ python -m rag_assistant ask "..." --provider gemini  # force one provider
 ### Tests and evaluation
 
 ```bash
-python -m pytest                       # uses a synthetic ClinVar fixture and mocked LLM clients
+python -m pytest                       # synthetic ClinVar fixture, mocked LLM clients, no keys
+                                       # (also run by GitHub Actions on every push)
 python -m eval.make_questions          # regenerate eval/questions.jsonl (40 questions, 5 phrasings)
 python eval/run.py                     # retrieval accuracy and latency vs. scanning the CSV
 python eval/run.py --llm               # also check that LLM answers cite the right record

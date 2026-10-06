@@ -13,7 +13,8 @@ from collections import Counter
 from pathlib import Path
 
 from . import config
-from .normalize import find_protein_changes, find_rsids, find_uniprot_ids, protein_change_key
+from .normalize import (find_protein_changes, find_rsids, find_uniprot_ids, has_term,
+                        protein_change_key)
 
 # DepMap columns worth showing the model; the full row stays in the index
 DEPMAP_FIELDS = [
@@ -23,16 +24,13 @@ DEPMAP_FIELDS = [
     "Oncogene High Impact", "Tumor Suppressor High Impact", "CIViC Description",
     "Gnomadg AF", "Gnomade AF", "Vep Existing Variation",
 ]
+FLAG_FIELDS = ["Hotspot", "Hess Driver", "Likely LOF", "Oncogene High Impact",
+               "Tumor Suppressor High Impact"]
 PEPTIDE_FIELDS = [
     "peptide_sequence_fwd", "peptide_start_fwd", "peptide_end_fwd", "mutation_pos_in_peptide_fwd",
     "Peptide_Header_Fwd", "peptide_sequence_rev", "Peptide_Header_Rev",
 ]
 _TOKEN_RE = re.compile(r"[a-z0-9_.*]+")
-
-
-def embeddings_path(db_path):
-    db_path = Path(db_path)
-    return db_path.with_name(db_path.stem + "_embeddings.npy")
 
 
 def _int(value):
@@ -56,6 +54,7 @@ class Index:
                 raise FileNotFoundError(
                     f"No index at {self.db_path}. Run: python -m rag_assistant ingest")
             self.conn = sqlite3.connect(self.db_path)
+        self.conn.create_function("has_term", 2, has_term, deterministic=True)
         self.genes = {g for (g,) in self.conn.execute("SELECT DISTINCT gene FROM depmap")}
         self._bm25 = None
         self._vectors = None
@@ -155,8 +154,7 @@ class Index:
         for key in ("Vep Clin Sig", "AM class", "Polyphen", "Sift", "Vep Impact"):
             if r["depmap"].get(key):
                 parts.append(f"{key}: {r['depmap'][key]}")
-        for key in ("Hotspot", "Hess Driver", "Likely LOF", "Oncogene High Impact",
-                    "Tumor Suppressor High Impact"):
+        for key in FLAG_FIELDS:
             if r["depmap"].get(key) == "True":
                 parts.append(key)
         if r["depmap"].get("CIViC Description"):
@@ -200,27 +198,35 @@ class Index:
 
     def filter_variants(self, gene=None, variant_type=None, clinvar_significance=None,
                         am_class=None, flag=None, in_peptide_database=None, limit=20):
-        """Structured filtering over the variant cards, e.g. all hotspot missense variants."""
-        sql, params = "SELECT card_id, text FROM cards WHERE 1=1", []
+        """Structured filtering, e.g. all hotspot missense variants.
+
+        Annotation values are matched as whole terms: "pathogenic" matches
+        "pathogenic&likely_pathogenic" and ClinVar's "Pathogenic/Likely pathogenic", but not
+        "likely_pathogenic" or "uncertain_significance&likely_pathogenic". clinvar_significance
+        is checked against both DepMap's copy of ClinVar and the indexed ClinVar release.
+        """
+        where, params = [], []
         if gene:
-            sql += " AND gene = ?"
+            where.append("gene = ?")
             params.append(gene.upper())
         if variant_type:
-            sql += " AND text LIKE ?"
-            params.append(f"%({'%'.join(variant_type.split())}%")
+            where.append("has_term(variant_info, ?)")
+            params.append(variant_type)
         if clinvar_significance:
-            sql += " AND (text LIKE ? OR text LIKE ?)"
-            params += [f"%Vep Clin Sig: %{clinvar_significance}%", f"%ClinVar %{clinvar_significance}%"]
+            where.append("(has_term(vep_clin_sig, ?) OR has_term(clinvar_sig, ?))")
+            params += [clinvar_significance, clinvar_significance]
         if am_class:
-            sql += " AND text LIKE ?"
-            params.append(f"%AM class: {am_class}%")
+            where.append("has_term(am_class, ?)")
+            params.append(am_class)
         if flag:
-            sql += " AND text LIKE ?"
-            params.append(f"%. {flag}%")
+            where.append("has_term(flags, ?)")
+            params.append(flag)
         if in_peptide_database is not None:
-            sql += " AND text " + ("" if in_peptide_database else "NOT ") + "LIKE '%in peptide database%'"
+            where.append("in_peptide_db = ?")
+            params.append(int(bool(in_peptide_database)))
+        sql = "SELECT card_id FROM cards" + (" WHERE " + " AND ".join(where) if where else "")
         rows = self.conn.execute(sql + " ORDER BY card_id LIMIT ?", (*params, limit)).fetchall()
-        return [self.variant_record(r) for (r, _) in rows]
+        return [self.variant_record(r) for (r,) in rows]
 
     # ---------------------------------------------------------------- search
     def _bm25_index(self):
@@ -248,28 +254,36 @@ class Index:
         return [cid for _, cid in sorted(scores, reverse=True)[:k]]
 
     def vector_search(self, query, k=10):
-        """Cosine similarity over card embeddings; [] when no embeddings were built."""
-        if self.db_path is None:
-            return []
-        path = embeddings_path(self.db_path)
-        if not path.exists():
+        """Cosine similarity over card embeddings; [] when none have been built.
+
+        Uses whatever embeddings exist, so a partly finished `embed` run still helps.
+        """
+        if self._vectors is None:
+            rows = self.conn.execute("SELECT card_id, vector FROM embeddings ORDER BY card_id").fetchall()
+            provider = self.conn.execute(
+                "SELECT value FROM meta WHERE key='embedding_provider'").fetchone()
+            if not rows or not provider:
+                self._vectors = ()
+            else:
+                import numpy as np
+
+                matrix = np.vstack([np.frombuffer(v, dtype="float32") for _, v in rows])
+                self._vectors = ([cid for cid, _ in rows],
+                                 matrix / np.linalg.norm(matrix, axis=1, keepdims=True), provider[0])
+        if not self._vectors:
             return []
         import numpy as np
 
         from .llm import embed_texts
 
-        if self._vectors is None:
-            vectors = np.load(path)
-            self._vectors = vectors / np.linalg.norm(vectors, axis=1, keepdims=True)
-            row = self.conn.execute("SELECT value FROM meta WHERE key='embedding_provider'").fetchone()
-            self._embed_provider = row[0] if row else None
+        ids, matrix, provider = self._vectors
         try:
-            (qvec,), _ = embed_texts([query], provider=self._embed_provider)
+            (qvec,), _ = embed_texts([query], provider=provider)
         except Exception:
-            return []
+            return []  # no key or provider down: keyword search still answers
         qvec = np.asarray(qvec, dtype="float32")
-        sims = self._vectors @ (qvec / np.linalg.norm(qvec))
-        return [int(i) + 1 for i in np.argsort(-sims)[:k]]  # card_id is 1-based
+        sims = matrix @ (qvec / np.linalg.norm(qvec))
+        return [ids[i] for i in np.argsort(-sims)[:k]]
 
     def search(self, query, k=5):
         """Reciprocal-rank fusion of keyword and vector results."""
@@ -289,8 +303,12 @@ class Index:
             "uniprot_ids": [u for u in find_uniprot_ids(question) if u not in self.genes],
         }
 
-    def retrieve(self, question, k=5):
-        """Exact lookups for any identifiers in the question, else hybrid search."""
+    def retrieve(self, question, k=5, gene_limit=25):
+        """Exact lookups for any identifiers in the question, else hybrid search.
+
+        A question that names genes but no protein change ("all variants in KMT2D") lists
+        those genes' variants, up to gene_limit; "total" says how many exist.
+        """
         ents = self.extract_entities(question)
         records = []
         for rs in ents["rsids"]:
@@ -300,14 +318,25 @@ class Index:
                 for uni in ents["uniprot_ids"] or [None]:
                     if gene or uni:
                         records += self.lookup(gene=gene, protein_change=change, uniprot=uni)
-        if not records and not ents["protein_changes"]:
+        limit, total = k, None
+        if not records and not ents["protein_changes"] and (ents["genes"] or ents["uniprot_ids"]):
+            limit, total = gene_limit, 0
+            for gene in ents["genes"]:
+                records += self.lookup(gene=gene, limit=gene_limit)
+                total += self.conn.execute(
+                    "SELECT COUNT(*) FROM depmap WHERE gene = ?", (gene,)).fetchone()[0]
             for uni in ents["uniprot_ids"]:
-                records += self.lookup(uniprot=uni, limit=k)
+                records += self.lookup(uniprot=uni, limit=gene_limit)
+                total += self.conn.execute(
+                    "SELECT COUNT(*) FROM depmap WHERE uniprot = ?", (uni,)).fetchone()[0]
         seen, unique = set(), []
         for r in records:
             if r["source_ids"][0] not in seen:
                 seen.add(r["source_ids"][0])
                 unique.append(r)
         if unique:
-            return {"mode": "exact", "entities": ents, "records": unique[:k]}
+            result = {"mode": "exact", "entities": ents, "records": unique[:limit]}
+            if total is not None:
+                result["total"] = max(total, len(unique))
+            return result
         return {"mode": "search", "entities": ents, "records": self.search(question, k)}

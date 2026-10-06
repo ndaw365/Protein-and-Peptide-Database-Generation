@@ -94,3 +94,24 @@ def chrom(value):
         return None
     text = str(value).strip().removeprefix("chr")
     return "MT" if text in {"M", "MT"} else text or None
+
+
+def terms(value):
+    """Split a multi-valued annotation into normalised terms.
+
+    DepMap writes "pathogenic&likely_pathogenic"; ClinVar writes "Pathogenic/Likely
+    pathogenic". Both become {"pathogenic", "likely_pathogenic"}, so a filter for
+    "pathogenic" does not match "likely_pathogenic" or unrelated fields.
+    """
+    if not value:
+        return set()
+    return {
+        re.sub(r"[\s-]+", "_", t.strip().lower())
+        for t in re.split(r"[&/,;|]", str(value)) if t.strip()
+    }
+
+
+def has_term(value, term):
+    """SQLite helper: 1 if term (normalised) is one of value's terms."""
+    wanted = terms(term)
+    return int(bool(wanted) and wanted <= terms(value))
