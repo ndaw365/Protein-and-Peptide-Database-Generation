@@ -1,5 +1,8 @@
 "Metric","Count"
 "Total entries",3826
-"Proteins with UniProt IDs",2271
-"Proteins with missense variants",1871
-"Proteins with retrieved canonical sequences",1871
+"Mutations with UniProt IDs",2271
+"Missense variants with UniProt IDs",1871
+"Missense variants with retrieved canonical sequences",1871
+"Missense variants applied to sequence",1869
+"Missense variants dropped (see MOLT4_dropped_variants.csv)",2
+"Variants in peptide database",1869

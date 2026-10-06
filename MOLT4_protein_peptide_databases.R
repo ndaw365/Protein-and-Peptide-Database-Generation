@@ -65,8 +65,8 @@ filtered_data <- molt4_data %>%
   filter(grepl("missense_variant", !!sym(variant_col_name), ignore.case = TRUE))
 
 # Document the counts
-cat("Proteins with UniProt IDs:", entries_with_uniprot, "\n")
-cat("Proteins with missense variants:", entries_with_missense, "\n")
+cat("Mutations with UniProt IDs:", entries_with_uniprot, "\n")
+cat("Missense variants with UniProt IDs:", entries_with_missense, "\n")
 
 # Sequences already downloaded are cached on disk so re-runs skip UniProt
 sequence_cache_file <- "uniprot_sequence_cache.csv"
@@ -205,7 +205,7 @@ proteins_with_sequences <- sum(result_data$sequence_retrieved, na.rm = TRUE)
 
 # Document the count
 cat("\nSummary:\n")
-cat("Proteins with retrieved canonical sequences:", proteins_with_sequences, "\n")
+cat("Missense variants with retrieved canonical sequences:", proteins_with_sequences, "\n")
 
 # Check if we have any successful retrievals
 if(proteins_with_sequences == 0) {
@@ -216,11 +216,11 @@ if(proteins_with_sequences == 0) {
 write.csv(result_data, "MOLT4_mutations_with_sequences.csv", row.names = FALSE)
 
 # Create a summary dataframe for documentation
-summary_data <- data.frame(
+analysis_summary <- data.frame(
   Metric = c("Total entries", 
-             "Proteins with UniProt IDs", 
-             "Proteins with missense variants",
-             "Proteins with retrieved canonical sequences"),
+             "Mutations with UniProt IDs", 
+             "Missense variants with UniProt IDs",
+             "Missense variants with retrieved canonical sequences"),
   Count = c(total_entries, 
             entries_with_uniprot, 
             entries_with_missense,
@@ -228,10 +228,10 @@ summary_data <- data.frame(
 )
 
 # Save the summary
-write.csv(summary_data, "MOLT4_analysis_summary.csv", row.names = FALSE)
+write.csv(analysis_summary, "MOLT4_analysis_summary.csv", row.names = FALSE)
 
 # Display the summary table
-knitr::kable(summary_data, caption = "MOLT4 Mutations Analysis Summary")
+knitr::kable(analysis_summary, caption = "MOLT4 Mutations Analysis Summary")
 
 # =========================================================================
 # PART 2: Process the sequences and apply mutations
@@ -631,7 +631,16 @@ cat("Total mutated proteins:", nrow(processed_data), "\n")
 cat("Forward peptide extractions:", successful_peptides_fwd, "\n")
 cat("Reverse peptide extractions:", successful_peptides_rev, "\n")
 cat("Total peptide entries in FASTA:", total_peptide_entries, "\n")
-cat("Proteins with at least one valid peptide:", nrow(valid_peptides), "\n")
+cat("Variants with at least one valid peptide:", nrow(valid_peptides), "\n")
+
+# Extend the summary with what happened after the sequences were retrieved
+analysis_summary <- rbind(analysis_summary, data.frame(
+  Metric = c("Missense variants applied to sequence",
+             "Missense variants dropped (see MOLT4_dropped_variants.csv)",
+             "Variants in peptide database"),
+  Count = c(successful_mutations, nrow(dropped_variants), nrow(valid_peptides))
+))
+write.csv(analysis_summary, "MOLT4_analysis_summary.csv", row.names = FALSE)
 
 # Show some example peptides
 if(nrow(valid_peptides) > 0) {
@@ -876,7 +885,7 @@ show_kr_diagnostic <- function(sequence, mutation_pos, protein_change, sequence_
 # Run enhanced verification with diagnostics for problem cases
 cat("\n=== ENHANCED VERIFICATION WITH DIAGNOSTICS ===\n")
 
-# Re-run verification on the same sample
+# Verify a reproducible random sample of variants (forward and reverse peptides)
 sample_size <- min(5, nrow(valid_peptides))  # Smaller sample for detailed diagnostics
 enhanced_verification_results <- list()
 
@@ -973,8 +982,11 @@ library(ggplot2)
 library(gridExtra)
 library(RColorBrewer)
 cat("\n=== VARIANT PEPTIDE LENGTH DISTRIBUTION ANALYSIS ===\n")
-# Function to extract peptide from 2nd K/R to 3rd K/R around mutation site
-extract_2nd_to_3rd_kr_peptide <- function(sequence, mutation, protein_name = "", is_reverse = FALSE, original_seq_length = NULL) {
+# Function to extract the peptide from the 2nd K/R upstream to the 2nd K/R downstream of
+# the mutation (inclusive). This is the same window as the peptide database (Part 3),
+# except that variants with fewer than 2 K/R on either side are skipped instead of
+# extending to the protein terminus.
+extract_kr_window_peptide <- function(sequence, mutation, protein_name = "", is_reverse = FALSE, original_seq_length = NULL) {
   # Check for valid inputs
   if (is.na(sequence) || is.na(mutation) || sequence == "" || mutation == "") {
     return(list(peptide = NA, start_pos = NA, end_pos = NA, 
@@ -1026,7 +1038,7 @@ extract_2nd_to_3rd_kr_peptide <- function(sequence, mutation, protein_name = "",
   left_kr <- kr_positions[kr_positions < mutation_position]
   right_kr <- kr_positions[kr_positions > mutation_position]
   
-  # We need at least 2 K/R on each side to get 2nd to 3rd
+  # We need at least 2 K/R on each side
   if (length(left_kr) < 2 || length(right_kr) < 2) {
     return(list(peptide = NA, start_pos = NA, end_pos = NA, 
                 mutation_pos_in_peptide = NA, original_mutation_pos = original_mutation_position, length = NA))
@@ -1065,21 +1077,21 @@ extract_2nd_to_3rd_kr_peptide <- function(sequence, mutation, protein_name = "",
     length = nchar(peptide)
   ))
 }
-# Apply the 2nd-to-3rd K/R peptide extraction to all sequences
-cat("Extracting peptides from 2nd K/R to 3rd K/R around mutation sites...\n")
+# Apply the K/R window extraction to all sequences
+cat("Extracting peptides from the 2nd K/R upstream to the 2nd K/R downstream of each mutation...\n")
 # Create peptide data for both forward and reverse sequences
 variant_peptide_data <- processed_data %>%
   filter(!is.na(mutated_sequence), !is.na(mutated_reversed)) %>%
   mutate(
     # Get original sequence length for reverse calculations
     original_seq_length = nchar(mutated_sequence),
-    # Extract variant peptides from forward sequences (2nd to 3rd K/R)
+    # Extract variant peptides from forward sequences
     variant_peptide_info_fwd = map2(mutated_sequence, Protein.Change, 
-                                    ~extract_2nd_to_3rd_kr_peptide(.x, .y, paste0(Gene, "_forward"), 
+                                    ~extract_kr_window_peptide(.x, .y, paste0(Gene, "_forward"), 
                                                                    is_reverse = FALSE)),
     # Extract variant peptides from reverse sequences
     variant_peptide_info_rev = pmap(list(mutated_reversed, Protein.Change, original_seq_length), 
-                                    ~extract_2nd_to_3rd_kr_peptide(..1, ..2, paste0(Gene, "_reverse"), 
+                                    ~extract_kr_window_peptide(..1, ..2, paste0(Gene, "_reverse"), 
                                                                    is_reverse = TRUE, 
                                                                    original_seq_length = ..3))
   )
@@ -1096,14 +1108,10 @@ variant_peptide_data <- variant_peptide_data %>%
     variant_peptide_seq_rev = map_chr(variant_peptide_info_rev, ~ifelse(is.na(.x$peptide), NA_character_, .x$peptide)),
     has_valid_variant_rev = !is.na(variant_peptide_length_rev)
   )
-# Collect all valid peptide lengths for visualization
-all_peptide_lengths <- c()
-# Add forward peptide lengths
-forward_lengths <- variant_peptide_data$variant_peptide_length_fwd[!is.na(variant_peptide_data$variant_peptide_length_fwd)]
-all_peptide_lengths <- c(all_peptide_lengths, forward_lengths)
-# Add reverse peptide lengths  
-reverse_lengths <- variant_peptide_data$variant_peptide_length_rev[!is.na(variant_peptide_data$variant_peptide_length_rev)]
-all_peptide_lengths <- c(all_peptide_lengths, reverse_lengths)
+# Collect peptide lengths for visualization. Only forward (target) peptides are counted:
+# each reverse (decoy) peptide is the exact reverse of its forward peptide, so including
+# them would double every count without changing the distribution.
+all_peptide_lengths <- variant_peptide_data$variant_peptide_length_fwd[!is.na(variant_peptide_data$variant_peptide_length_fwd)]
 # Create data frame for plotting with three categories
 peptide_length_df <- data.frame(
   Length = all_peptide_lengths,

@@ -29,11 +29,11 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 `MOLT4 mutations.csv`: the MOLT4 mutation table exported from the [DepMap portal](https://depmap.org/portal/)
 (cell line MOLT-4; GRCh38 coordinates with VEP, AlphaMissense, REVEL and DepMap's copy of ClinVar annotations).
 
-**Required Columns (case-insensitive):**
-- `Uniprot ID`: UniProt accession (e.g., P12345)
+**Required Columns:**
+- `Uniprot ID`: UniProt accession (e.g., `Q5SV97-1`); matched case-insensitively
 - `Variant Info`: Must include the string `"missense_variant"` (combined consequences such as
-  `missense_variant&splice_region_variant` are kept)
-- `Protein.Change`: Mutation notation (e.g., `p.P750Q`)
+  `missense_variant&splice_region_variant` are kept); matched case-insensitively
+- `Protein Change`: Mutation notation (e.g., `p.P750Q`); R reads it as `Protein.Change`
 - `Gene`: Gene symbol (e.g., `TP53`)
 
 
@@ -42,12 +42,13 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 | File Name                                | Description |
 |------------------------------------------|-------------|
 | `MOLT4_mutations_with_sequences.csv`     | Filtered entries + canonical sequences |
-| `MOLT4_analysis_summary.csv`             | Summary of processing/filtering stats |
+| `MOLT4_analysis_summary.csv`             | Variant counts at each step, from input rows to the peptide database |
 | `MOLT4_mutated_protein_output.csv`       | Mutated forward/reverse protein sequences + metadata |
 | `MOLT4_mutated_protein_database.fasta`   | FASTA-formatted protein sequences (mutated) |
 | `MOLT4_mutated_peptide_database.fasta`   | FASTA-formatted peptides around mutations |
 | `MOLT4_peptide_data.csv`                 | Peptide details and positional metadata |
 | `MOLT4_dropped_variants.csv`             | Missense variants left out of the databases, with the reason |
+| `MOLT4_variant_peptide_length_histogram.png` | Length distribution of the forward variant peptides |
 | `uniprot_sequence_cache.csv`             | Local cache of downloaded UniProt sequences (git-ignored) |
 
 
@@ -88,9 +89,17 @@ install.packages(c("tidyverse", "httr", "stringr", "readr", "knitr", "gridExtra"
 
 ### 5. Verification
 
-- Checks boundary correctness of extracted peptides
-- Validates mutation position
-- Ensures the mutation is reflected in the peptide
+- Spot-checks a reproducible random sample of 5 variants (forward and reverse peptides):
+  K/R boundaries, mutation position, and that the mutated residue is in the peptide
+
+### 6. Peptide Length Distribution
+
+- Uses the same window as the peptide database (2nd K/R upstream to 2nd K/R downstream),
+  skipping the 104 variants with fewer than 2 K/R on one side, which leaves 1765 peptides
+- Counts forward peptides only: each reverse (decoy) peptide has the same length as its
+  forward peptide
+- Bins: below 7 aa (11, 0.6%), 7–50 aa (1349, 76.4%), above 50 aa (405, 22.9%). The plot's
+  x-axis stops at 100 aa, so the longest peptides are counted but not drawn
 
 ## FASTA Header Example (forward strand) for protein database:
 >Fwd_spP750Q|Q5SV97-1|PERM1_P750Q OS=Homo sapiens GN=PERM1 (Sequence)
@@ -105,6 +114,9 @@ with FragPipe, and the results were compared in
 [ndaw365/MOLT4-Checking](https://github.com/ndaw365/MOLT4-Checking). The peptide hits from that
 search (`matched_peptides_to_tryptic_peptides.tsv`) are copied here as
 `data_sources/MOLT4_detected_variant_peptides.tsv` so the assistant below can report them.
+
+That search used the database as it was before the filter fix (1810 variants), so the 59
+variants recovered by the fix have not been searched yet.
 
 Of the 41 target peptide hits, only 7 span the mutated residue (EVL D20N, COPS7B A224T,
 TUBA4A E77D, CDC45 E259K, DUSP7 R102C, BRD4 P1131A, P2RX4 Y378F). The other 34 match the

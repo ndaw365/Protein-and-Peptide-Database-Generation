@@ -1,4 +1,8 @@
-"""Paths and model settings. Every value can be overridden with an environment variable."""
+"""Paths and model settings.
+
+API keys, model names and RAG_DATA_DIR come from the environment (or a .env file in the
+repo root); the input file paths are fixed relative to the repository.
+"""
 
 import os
 from pathlib import Path

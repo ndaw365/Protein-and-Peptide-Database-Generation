@@ -9,7 +9,7 @@ import json
 import re
 
 from . import config
-from .retrieve import Index
+from .retrieve import FLAG_FIELDS, Index
 
 SYSTEM_PROMPT = """You are a variant-lookup assistant for the MOLT4 T-ALL cell line.
 Answer ONLY from the retrieved records and tool results. Each fact in them carries a
@@ -50,8 +50,7 @@ TOOLS = [
             "variant_type": {"type": "string", "description": "e.g. missense_variant, frameshift_variant, stop_gained"},
             "clinvar_significance": {"type": "string", "description": "e.g. pathogenic, likely_benign, uncertain_significance"},
             "am_class": {"type": "string", "description": "AlphaMissense class: likely_pathogenic, ambiguous, likely_benign"},
-            "flag": {"type": "string", "enum": ["Hotspot", "Hess Driver", "Likely LOF", "Oncogene High Impact",
-                                                "Tumor Suppressor High Impact"]},
+            "flag": {"type": "string", "enum": FLAG_FIELDS},
             "in_peptide_database": {"type": "boolean"},
             "limit": {"type": "integer", "default": 20},
         }},
