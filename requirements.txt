@@ -1,0 +1,3 @@
+openai>=1.40      # OpenAI API, also used for Gemini via its OpenAI-compatible endpoint
+numpy>=1.26       # vector search over card embeddings
+pytest>=8         # tests

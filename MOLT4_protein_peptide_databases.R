@@ -7,8 +7,24 @@ library(stringr)    # For string manipulation
 library(readr)      # For reading/writing CSVs
 library(knitr)      # For tables
 
-# Read the input CSV file - adjust path as needed
-molt4_data <- read.csv("~/Downloads/MOLT4 mutations.csv", stringsAsFactors = FALSE)
+# Read the input CSV file from the working directory, or pass a path:
+#   Rscript MOLT4_protein_peptide_databases.R "path/to/MOLT4 mutations.csv"
+cli_args <- commandArgs(trailingOnly = TRUE)
+input_file <- if (length(cli_args) >= 1) cli_args[1] else "MOLT4 mutations.csv"
+if (!file.exists(input_file)) {
+  stop(paste("Input file not found:", input_file))
+}
+molt4_data <- read.csv(input_file, stringsAsFactors = FALSE)
+
+# Rows removed after the missense filter are recorded here with a reason
+dropped_variants <- data.frame(Gene = character(), Protein.Change = character(),
+                               Uniprot.ID = character(), Reason = character(),
+                               stringsAsFactors = FALSE)
+log_dropped <- function(gene, protein_change, uniprot_id, reason) {
+  dropped_variants <<- rbind(dropped_variants, data.frame(
+    Gene = gene, Protein.Change = protein_change, Uniprot.ID = uniprot_id,
+    Reason = reason, stringsAsFactors = FALSE))
+}
 
 # Display the first few rows to understand the data structure
 head(molt4_data)
@@ -52,6 +68,15 @@ filtered_data <- molt4_data %>%
 cat("Proteins with UniProt IDs:", entries_with_uniprot, "\n")
 cat("Proteins with missense variants:", entries_with_missense, "\n")
 
+# Sequences already downloaded are cached on disk so re-runs skip UniProt
+sequence_cache_file <- "uniprot_sequence_cache.csv"
+sequence_cache <- if (file.exists(sequence_cache_file)) {
+  cache_df <- read.csv(sequence_cache_file, stringsAsFactors = FALSE)
+  setNames(cache_df$sequence, cache_df$uniprot_id)
+} else {
+  character()
+}
+
 # Function to fetch canonical sequence from UniProt using the current REST API
 get_canonical_sequence <- function(uniprot_id) {
   if (is.na(uniprot_id) || uniprot_id == "") {
@@ -62,7 +87,11 @@ get_canonical_sequence <- function(uniprot_id) {
   url <- paste0("https://rest.uniprot.org/uniprotkb/", uniprot_id, ".fasta")
   
   tryCatch({
-    response <- GET(url)
+    # Retry transient failures (429/5xx) with exponential backoff
+    response <- RETRY("GET", url,
+                      user_agent("MOLT4-peptide-database-pipeline (httr)"),
+                      times = 4, pause_base = 2, pause_cap = 30,
+                      terminate_on = c(400, 404))
     
     if (status_code(response) == 200) {
       # Parse FASTA content
@@ -131,7 +160,19 @@ for (i in 1:total_batches) {
         if (!is.na(uniprot_id) && nchar(uniprot_id) > 0) {
           cat(paste0("  Retrieving sequence for ", uniprot_id, "... "))
           
-          seq_result <- get_canonical_sequence(uniprot_id)
+          from_cache <- uniprot_id %in% names(sequence_cache)
+          if (from_cache) {
+            seq_result <- unname(sequence_cache[uniprot_id])
+          } else {
+            seq_result <- get_canonical_sequence(uniprot_id)
+            if (!is.na(seq_result)) {
+              sequence_cache[uniprot_id] <- seq_result
+              write.table(data.frame(uniprot_id = uniprot_id, sequence = seq_result),
+                          sequence_cache_file, sep = ",", row.names = FALSE,
+                          col.names = !file.exists(sequence_cache_file),
+                          append = file.exists(sequence_cache_file))
+            }
+          }
           
           if (!is.na(seq_result)) {
             result_data$canonical_sequence[j] <- seq_result
@@ -139,10 +180,12 @@ for (i in 1:total_batches) {
             cat("Success! Length:", nchar(seq_result), "characters\n")
           } else {
             cat("Failed to retrieve sequence.\n")
+            log_dropped(result_data$Gene[j], result_data$Protein.Change[j], uniprot_id,
+                        "UniProt sequence could not be retrieved")
           }
           
           # Add a delay between API calls to respect rate limits
-          add_delay(1)  # 1 second delay between calls
+          if (!from_cache) add_delay(1)  # 1 second delay between calls
         } else {
           cat(paste0("  Skipping empty UniProt ID at row ", j, "\n"))
         }
@@ -150,7 +193,7 @@ for (i in 1:total_batches) {
     }
     
     # Add a longer delay between batches
-    if(i < total_batches) {
+    if(i < total_batches && any(!result_data[start_idx:end_idx, uniprot_col_name] %in% names(sequence_cache))) {
       cat("Pausing between batches to respect API rate limits...\n")
       add_delay(3)  # 3 seconds delay between batches
     }
@@ -208,7 +251,7 @@ apply_mutation <- function(sequence, mutation) {
   match_result <- stringr::str_match(mutation, pattern)
   
   if (is.null(match_result) || nrow(match_result) == 0 || any(is.na(match_result))) {
-    return(NA)
+    return(structure(NA_character_, drop_reason = "Protein change is not a single amino-acid substitution"))
   }
   
   original_aa <- match_result[1, 2]
@@ -222,7 +265,8 @@ apply_mutation <- function(sequence, mutation) {
   
   # Validate position and sequence length
   if (position > nchar(sequence) || position < 1) {
-    return(NA)
+    return(structure(NA_character_, drop_reason = paste0(
+      "Position ", position, " is outside the UniProt sequence (length ", nchar(sequence), ")")))
   }
   
   # Validate that the character at the position matches the expected original amino acid
@@ -234,7 +278,9 @@ apply_mutation <- function(sequence, mutation) {
       "Found:", current_aa,
       "in mutation:", mutation
     ))
-    return(NA)
+    return(structure(NA_character_, drop_reason = paste0(
+      "Reference mismatch: expected ", original_aa, " at ", position, " but UniProt has ", current_aa,
+      " (variant is annotated on an Ensembl transcript that may differ from the UniProt isoform)")))
   }
   
   # Apply mutation
@@ -253,8 +299,10 @@ reverse_sequence <- function(sequence) {
 
 # First, create a clean version of Protein.Change
 processed_data <- result_data %>%
+  # Same missense filter as Part 1, so rows like
+  # "missense_variant&splice_region_variant" are kept
   filter(
-    !!sym(variant_col_name) == "missense_variant",
+    grepl("missense_variant", !!sym(variant_col_name), ignore.case = TRUE),
     !is.na(canonical_sequence)
   ) %>%
   mutate(
@@ -264,10 +312,17 @@ processed_data <- result_data %>%
 # Next, apply mutations one by one to avoid errors
 processed_data$mutated_sequence <- NA
 for(i in 1:nrow(processed_data)) {
-  processed_data$mutated_sequence[i] <- apply_mutation(
+  mutation_result <- apply_mutation(
     processed_data$canonical_sequence[i], 
     processed_data$Protein.Change[i]
   )
+  processed_data$mutated_sequence[i] <- as.character(mutation_result)
+  if (is.na(mutation_result)) {
+    log_dropped(processed_data$Gene[i], processed_data$Protein.Change[i],
+                processed_data[i, uniprot_col_name],
+                if (is.null(attr(mutation_result, "drop_reason"))) "Mutation could not be applied"
+                else attr(mutation_result, "drop_reason"))
+  }
 }
 
 # Then continue with the rest of the processing
@@ -278,7 +333,8 @@ processed_data <- processed_data %>%
     mutated_reversed = sapply(mutated_sequence, reverse_sequence),
     # Create tags and headers
     Variant_Tag = paste0(Gene, "_", Clean_Protein_Change),
-    GN = paste0("GN=", Gene, Clean_Protein_Change),
+    # GN= must hold only the gene symbol; search engines parse it as the gene name
+    GN = paste0("GN=", Gene),
     Organism = "OS=Homo sapiens",
     Header_Fwd = paste0(">Fwd_sp", Clean_Protein_Change, "|", !!sym(uniprot_col_name), "|", Variant_Tag, " ", Organism, " ", GN),
     Header_Rev = paste0(">Rev_sp", Clean_Protein_Change, "|", !!sym(uniprot_col_name), "|", Variant_Tag, " ", Organism, " ", GN)
@@ -297,6 +353,11 @@ cat("Successfully processed", successful_mutations, "out of", nrow(processed_dat
 output_file <- "MOLT4_mutated_protein_output.csv"
 write_csv(processed_data, output_file)
 cat("Output saved to", output_file, "\n")
+
+# Record every missense variant that did not make it into the databases
+dropped_file <- "MOLT4_dropped_variants.csv"
+write_csv(dropped_variants, dropped_file)
+cat("Dropped", nrow(dropped_variants), "variants; reasons saved to", dropped_file, "\n")
 
 # Show final output columns
 final_output <- processed_data %>%
@@ -598,6 +659,7 @@ cat("2. Peptide sequences:", output_peptide_fasta, "\n")
 cat("3. Protein data CSV:", output_file, "\n")
 cat("4. Peptide data CSV:", peptide_output_csv, "\n")
 cat("5. Analysis summary:", "MOLT4_analysis_summary.csv", "\n")
+cat("6. Dropped variants:", dropped_file, "\n")
 
 # =========================================================================
 # PART 4: VERIFICATION OF PEPTIDE TRUNCATIONS
