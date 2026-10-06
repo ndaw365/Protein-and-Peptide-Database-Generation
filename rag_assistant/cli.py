@@ -32,6 +32,10 @@ def main(argv=None):
     p.add_argument("--depmap-model", help="MOLT4's DepMap model ID (ACH-...) for --gene-effect")
     p.add_argument("--embed", action="store_true", help="embed variant cards for vector search")
 
+    p = sub.add_parser("embed", help="embed variant cards; resumes where a previous run stopped")
+    p.add_argument("--provider", choices=["openai", "gemini"],
+                   help="embedding provider (default: the one already used, else OpenAI then Gemini)")
+
     p = sub.add_parser("lookup", help="exact variant lookup, no LLM")
     p.add_argument("gene", nargs="?")
     p.add_argument("protein_change", nargs="?")
@@ -61,6 +65,21 @@ def main(argv=None):
         print(f"Index written to {args.db}")
         for key, value in stats.items():
             print(f"  {key}: {value}")
+        return 1 if "embedding_error" in stats else 0
+
+    if args.command == "embed":
+        from .ingest import embed_index
+        from .llm import NoProviderError
+
+        try:
+            done_now, total, cards, error = embed_index(args.db, provider=args.provider)
+        except NoProviderError as exc:
+            print(exc, file=sys.stderr)
+            return 2
+        print(f"Embedded {done_now} cards this run; {total}/{cards} cards have embeddings.")
+        if error:
+            print(f"Stopped early: {error}\nRun the same command again to resume.", file=sys.stderr)
+            return 1
         return 0
 
     from .retrieve import Index
@@ -75,6 +94,8 @@ def main(argv=None):
         if args.no_llm:
             result = index.retrieve(args.question)
             print(f"Retrieval mode: {result['mode']}  entities: {result['entities']}")
+            if result.get("total", 0) > len(result["records"]):
+                print(f"Showing {len(result['records'])} of {result['total']} matching variants.")
             _print_records(result["records"])
             return 0
         from .llm import NoProviderError, ask

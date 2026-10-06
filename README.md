@@ -1,6 +1,8 @@
 
 # MOLT4 Mutation Analysis and Peptide Extraction Pipeline
 
+[![tests](https://github.com/ndaw365/Protein-and-Peptide-Database-Generation/actions/workflows/tests.yml/badge.svg)](https://github.com/ndaw365/Protein-and-Peptide-Database-Generation/actions/workflows/tests.yml)
+
 ## Overview
 
 This pipeline processes mutation data for the MOLT4 cell line. It performs:
@@ -127,11 +129,18 @@ a source ID:
 How retrieval works:
 
 - **Exact lookup.** Gene + protein change in 1- or 3-letter HGVS (`P750Q`, `p.Pro750Gln`,
-  `R306Ter`, `K267fs`), dbSNP rsID, or UniProt accession. This needs no model.
+  `R306Ter`, `K267fs`), dbSNP rsID, or UniProt accession. This needs no model. A question
+  that names a gene but no change ("all variants in KMT2D") lists that gene's variants.
+- **Filters** (ClinVar significance, AlphaMissense class, variant type, DepMap flags such as
+  Hotspot) match whole terms: `pathogenic` matches `pathogenic&likely_pathogenic` but not
+  `likely_pathogenic`, and never matches a different annotation field.
 - **ClinVar matching.** A variant is linked to ClinVar by the same GRCh38 allele first,
   then the same rsID, then the same gene + protein change. The match type is reported.
 - **Free-text questions** use BM25 keyword search over one summary per variant, combined
-  with vector search when embeddings have been built.
+  with vector search when embeddings have been built. Embeddings are stored in the index
+  and saved in batches, so a rate limit or network error never loses the index or the
+  embeddings already made: run `python -m rag_assistant embed` again to continue.
+  Rebuilding the index keeps the embeddings of variants whose summary did not change.
 - **Answers.** The LLM gets the retrieved records plus lookup tools. It must cite source IDs,
   and any citation that was not actually retrieved is flagged. OpenAI is used first; if
   there is no `OPENAI_API_KEY` or the call fails, the same request goes to Gemini through
@@ -139,10 +148,13 @@ How retrieval works:
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env   # add OPENAI_API_KEY and/or GEMINI_API_KEY, then: set -a; source .env
+cp .env.example .env   # then put your OPENAI_API_KEY and/or GEMINI_API_KEY in .env
+                       # (.env is git-ignored and loaded automatically; keys exported
+                       #  in the shell take priority)
 
 python -m rag_assistant ingest                       # downloads ClinVar from NCBI (~400 MB)
 python -m rag_assistant ingest --clinvar variant_summary.txt.gz --embed
+python -m rag_assistant embed                        # resume embedding after a rate limit
 # optional: --gene-effect CRISPRGeneEffect.csv --depmap-model <MOLT4 ACH- ID from DepMap Model.csv>
 
 python -m rag_assistant lookup NRAS p.Gly12Cys       # exact lookup, no LLM
@@ -156,7 +168,8 @@ python -m rag_assistant ask "..." --provider gemini  # force one provider
 ### Tests and evaluation
 
 ```bash
-python -m pytest                       # uses a synthetic ClinVar fixture and mocked LLM clients
+python -m pytest                       # synthetic ClinVar fixture, mocked LLM clients, no keys
+                                       # (also run by GitHub Actions on every push)
 python -m eval.make_questions          # regenerate eval/questions.jsonl (40 questions, 5 phrasings)
 python eval/run.py                     # retrieval accuracy and latency vs. scanning the CSV
 python eval/run.py --llm               # also check that LLM answers cite the right record
