@@ -15,7 +15,8 @@ def load_dotenv(path):
     path = Path(path)
     if not path.is_file():
         return
-    for line in path.read_text(encoding="utf-8-sig").splitlines()  # -sig: Notepad BOM:
+    # utf-8-sig drops the byte-order mark Windows Notepad may add
+    for line in path.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
