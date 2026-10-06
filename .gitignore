@@ -1,0 +1,17 @@
+# Built index, embeddings and raw downloads (ClinVar is ~400 MB)
+data/
+
+# R pipeline cache and session files
+uniprot_sequence_cache.csv
+Rplots.pdf
+.Rhistory
+.RData
+
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/

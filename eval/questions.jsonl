@@ -1,0 +1,40 @@
+{"style": "one_letter", "question": "What is known about SRCAP R2029H?", "expected_source": "depmap:row1369", "gene": "SRCAP", "protein_change": "p.R2029H"}
+{"style": "one_letter", "question": "What is known about ANKRD13D R585W?", "expected_source": "depmap:row642", "gene": "ANKRD13D", "protein_change": "p.R585W"}
+{"style": "one_letter", "question": "What is known about NBR1 S891F?", "expected_source": "depmap:row1672", "gene": "NBR1", "protein_change": "p.S891F"}
+{"style": "one_letter", "question": "What is known about DUSP7 R102C?", "expected_source": "depmap:row2860", "gene": "DUSP7", "protein_change": "p.R102C"}
+{"style": "one_letter", "question": "What is known about C1orf56 R39C?", "expected_source": "depmap:row197", "gene": "C1orf56", "protein_change": "p.R39C"}
+{"style": "one_letter", "question": "What is known about C1orf116 P183S?", "expected_source": "depmap:row287", "gene": "C1orf116", "protein_change": "p.P183S"}
+{"style": "one_letter", "question": "What is known about NIPAL2 A152S?", "expected_source": "depmap:row3559", "gene": "NIPAL2", "protein_change": "p.A152S"}
+{"style": "one_letter", "question": "What is known about RTN4 V972I?", "expected_source": "depmap:row2313", "gene": "RTN4", "protein_change": "p.V972I"}
+{"style": "hgvs_3letter", "question": "Is RPP30 p.Thr169Arg in the peptide database?", "expected_source": "depmap:row381", "gene": "RPP30", "protein_change": "p.T169R"}
+{"style": "hgvs_3letter", "question": "Is SUPT6H p.Arg1318Trp in the peptide database?", "expected_source": "depmap:row1562", "gene": "SUPT6H", "protein_change": "p.R1318W"}
+{"style": "hgvs_3letter", "question": "Is CEP250 p.Ala1606Ser in the peptide database?", "expected_source": "depmap:row2531", "gene": "CEP250", "protein_change": "p.A1606S"}
+{"style": "hgvs_3letter", "question": "Is KHDC4 p.Glu513Gly in the peptide database?", "expected_source": "depmap:row228", "gene": "KHDC4", "protein_change": "p.E513G"}
+{"style": "hgvs_3letter", "question": "Is PNMA8B p.Ala489Thr in the peptide database?", "expected_source": "depmap:row2185", "gene": "PNMA8B", "protein_change": "p.A489T"}
+{"style": "hgvs_3letter", "question": "Is NACA p.Pro81His in the peptide database?", "expected_source": "depmap:row879", "gene": "NACA", "protein_change": "p.P81H"}
+{"style": "hgvs_3letter", "question": "Is STIL p.Ser1136Asn in the peptide database?", "expected_source": "depmap:row147", "gene": "STIL", "protein_change": "p.S1136N"}
+{"style": "hgvs_3letter", "question": "Is ANK3 p.Leu2468Pro in the peptide database?", "expected_source": "depmap:row350", "gene": "ANK3", "protein_change": "p.L2468P"}
+{"style": "uniprot", "question": "Show the variant C325Y on UniProt Q9BZE9.", "expected_source": "depmap:row1827", "gene": "ASPSCR1", "protein_change": "p.C325Y"}
+{"style": "uniprot", "question": "Show the variant S170I on UniProt Q8WXE0.", "expected_source": "depmap:row1755", "gene": "CASKIN2", "protein_change": "p.S170I"}
+{"style": "uniprot", "question": "Show the variant D231Y on UniProt Q6UVM3.", "expected_source": "depmap:row272", "gene": "KCNT2", "protein_change": "p.D231Y"}
+{"style": "uniprot", "question": "Show the variant G748R on UniProt Q14587.", "expected_source": "depmap:row995", "gene": "ZNF268", "protein_change": "p.G748R"}
+{"style": "uniprot", "question": "Show the variant Q136K on UniProt P00749.", "expected_source": "depmap:row369", "gene": "PLAU", "protein_change": "p.Q136K"}
+{"style": "uniprot", "question": "Show the variant R875H on UniProt O60282.", "expected_source": "depmap:row2393", "gene": "KIF5C", "protein_change": "p.R875H"}
+{"style": "uniprot", "question": "Show the variant A292T on UniProt Q9UHD8.", "expected_source": "depmap:row1782", "gene": "SEPTIN9", "protein_change": "p.A292T"}
+{"style": "uniprot", "question": "Show the variant A453T on UniProt Q92974.", "expected_source": "depmap:row233", "gene": "ARHGEF2", "protein_change": "p.A453T"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs797045050 and what is its clinical significance?", "expected_source": "depmap:row2475", "gene": "KIF1A", "protein_change": "p.R13H"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs797045800 and what is its clinical significance?", "expected_source": "depmap:row583", "gene": "NRXN2", "protein_change": "p.P1135S"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs1878075866 and what is its clinical significance?", "expected_source": "depmap:row936", "gene": "MED13L", "protein_change": "p.S1076N"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs749466673 and what is its clinical significance?", "expected_source": "depmap:row3123", "gene": "RAD50", "protein_change": "p.R656Ter"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs763016003 and what is its clinical significance?", "expected_source": "depmap:row3732", "gene": "NOTCH1", "protein_change": "p.P2514RfsTer4"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs1555871798 and what is its clinical significance?", "expected_source": "depmap:row2629", "gene": "AIRE", "protein_change": "p.A19T"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs1558004341 and what is its clinical significance?", "expected_source": "depmap:row248", "gene": "ATP1A2", "protein_change": "p.R238C"}
+{"style": "rsid", "question": "Which MOLT4 variant is rs1064796798 and what is its clinical significance?", "expected_source": "depmap:row3816", "gene": "FLNA", "protein_change": "p.A206V"}
+{"style": "lowercase_gene", "question": "peptide covering jph2 S65T", "expected_source": "depmap:row2546", "gene": "JPH2", "protein_change": "p.S65T"}
+{"style": "lowercase_gene", "question": "peptide covering slc4a1 Q447H", "expected_source": "depmap:row1677", "gene": "SLC4A1", "protein_change": "p.Q447H"}
+{"style": "lowercase_gene", "question": "peptide covering znf687 A55T", "expected_source": "depmap:row202", "gene": "ZNF687", "protein_change": "p.A55T"}
+{"style": "lowercase_gene", "question": "peptide covering marchf9 R23G", "expected_source": "depmap:row903", "gene": "MARCHF9", "protein_change": "p.R23G"}
+{"style": "lowercase_gene", "question": "peptide covering fmo5 A201G", "expected_source": "depmap:row191", "gene": "FMO5", "protein_change": "p.A201G"}
+{"style": "lowercase_gene", "question": "peptide covering rapgef4 G388E", "expected_source": "depmap:row2411", "gene": "RAPGEF4", "protein_change": "p.G388E"}
+{"style": "lowercase_gene", "question": "peptide covering nup188 G1357D", "expected_source": "depmap:row3714", "gene": "NUP188", "protein_change": "p.G1357D"}
+{"style": "lowercase_gene", "question": "peptide covering naa40 L155F", "expected_source": "depmap:row565", "gene": "NAA40", "protein_change": "p.L155F"}

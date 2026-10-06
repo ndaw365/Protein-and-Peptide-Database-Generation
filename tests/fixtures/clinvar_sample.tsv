@@ -1,0 +1,6 @@
+#AlleleID	Type	Name	GeneID	GeneSymbol	HGNC_ID	GermlineClassification	ClinSigSimple	LastEvaluated	RS# (dbSNP)	nsv/esv (dbVar)	RCVaccession	PhenotypeIDS	PhenotypeList	Origin	OriginSimple	Assembly	ChromosomeAccession	Chromosome	Start	Stop	ReferenceAllele	AlternateAllele	Cytogenetic	ReviewStatus	NumberSubmitters	Guidelines	TestedInGTR	OtherIDs	SubmitterCategories	VariationID	PositionVCF	ReferenceAlleleVCF	AlternateAlleleVCF
+1	single nucleotide variant	NM_002524.5(NRAS):c.34G>T (p.Gly12Cys)	-	NRAS	-	Pathogenic	-	Jan 01, 2024	-1	-	-	-	SYNTHETIC test condition A	-	-	GRCh38	-	1	-	-	-	-	-	criteria provided, single submitter	-	-	-	-	-	900001	114716127	C	A
+2	-	NM_002524.5(NRAS):c.34G>T (p.Gly12Cys)	-	NRAS	-	Pathogenic	-	-	-	-	-	-	-	-	-	GRCh37	-	1	-	-	-	-	-	-	-	-	-	-	-	900001	115258748	C	A
+3	-	NM_000546.6(TP53):c.916C>T (p.Arg306Ter)	-	TP53	-	Pathogenic/Likely pathogenic	-	-	121913344	-	-	-	SYNTHETIC test condition B	-	-	GRCh38	-	17	-	-	-	-	-	criteria provided, multiple submitters, no conflicts	-	-	-	-	-	900002	1	G	A
+4	-	NM_001291366.2(PERM1):c.2249C>A (p.Pro750Gln)	-	PERM1	-	Uncertain significance	-	-	-1	-	-	-	SYNTHETIC test condition C	-	-	GRCh38	-	1	-	-	-	-	-	no assertion criteria provided	-	-	-	-	-	900003	2	G	T
+5	-	NM_0(NOTAMOLT4GENE):c.1A>G (p.Met1Val)	-	NOTAMOLT4GENE	-	Benign	-	-	-	-	-	-	-	-	-	GRCh38	-	2	-	-	-	-	-	-	-	-	-	-	-	900004	3	A	G
