@@ -147,13 +147,36 @@ curl -sS -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1b
 - **ClinVar:** "Vep Clin Sig" is DepMap's copy of ClinVar, while `clinvar:` entries come from
   the release you ingested. They can differ.
 
-## Tests
+## Tests and evaluation
 
 ```bash
-python -m pytest          # 68 tests; fake ClinVar and LLM, no keys needed (CI runs them on every push)
-python eval/run.py        # retrieval on 40 questions: 40/40 correct, ~0.3 ms each (CSV scan: 8/40)
-python eval/run.py --llm  # also checks that LLM answers cite the right record (needs a key)
+python -m pytest                     # 81 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
+python eval/run.py                   # retrieval scorecard (no key)
+python eval/run.py --llm             # + answer scorecard (needs a key)
+python eval/run.py --llm --judge     # + faithfulness: a second LLM call checks each claim against the evidence
+python eval/run.py --llm --models gemini-3.6-flash,gemini-3.5-flash   # compare models side by side
 ```
 
-The evaluation questions come from the same data, so they test the lookup logic, not
-open-ended questions.
+**Retrieval** (`eval/questions.jsonl`, 40 generated questions in 5 phrasings) reports top-1
+accuracy, recall@5 and latency against a plain CSV scan. It's currently 40/40 at about 0.3 ms,
+against 8/40 for the CSV scan. The questions come from the same data, so this checks the
+lookup logic, not open-ended questions.
+
+**Answers** (`eval/answers.jsonl`, 18 hand-written cases with expected answers):
+
+| Category | What it checks | Example |
+|----------|----------------|---------|
+| fact | The key fact is in the answer | rs121913344 → TP53 R306Ter |
+| list | Every item is listed | NOTCH1's 4 variants; the 7 MS peptides that span a mutation |
+| trap | Subtle biology is right | PPP1CA D242N's MS hit doesn't span the mutation |
+| refusal | Says "not found" instead of guessing | BRAF V600E, KRAS, drug names |
+
+An answer **passes** when it's correct, cites the expected source, and has no unverified
+citations. The scorecard lists every failure with its reason, and the full answers are
+saved to `eval/results/` (git-ignored). Each comparison model runs without fallbacks, so its
+score is its own. The judge always uses the models in `.env`, so no model grades its own
+answers.
+
+To improve the assistant: run the scorecard, change one thing (the prompt in
+`rag_assistant/llm.py`, the model, or the retrieval), and run it again. Add a case to
+`eval/answers.jsonl` for every bad answer you see in normal use.
