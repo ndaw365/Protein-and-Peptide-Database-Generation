@@ -69,6 +69,20 @@ class NoProviderError(RuntimeError):
     pass
 
 
+class ProvidersFailed(RuntimeError):
+    """Every configured provider returned an error."""
+
+
+def model_hint(message):
+    """A fix to suggest when an error looks like a retired or misspelled model name."""
+    text = message.lower()
+    if any(s in text for s in ("notfounderror", "not found", "no longer available", "does not exist")):
+        return ("The model name looks retired or unknown. Set GEMINI_CHAT_MODEL / "
+                "GEMINI_EMBED_MODEL (or OPENAI_CHAT_MODEL / OPENAI_EMBED_MODEL) in .env to the "
+                "model the error suggests.")
+    return None
+
+
 def _providers(preferred=None):
     available = {
         "openai": (config.OPENAI_API_KEY, None, config.OPENAI_CHAT_MODEL, config.OPENAI_EMBED_MODEL),
@@ -91,20 +105,20 @@ def _client(api_key, base_url):
     return OpenAI(api_key=api_key, base_url=base_url, max_retries=2, timeout=60)
 
 
-def _with_fallback(fn, preferred=None, client_factory=_client):
+def _with_fallback(fn, preferred=None, client_factory=None):
     """Run fn(client, name, chat_model, embed_model) on each provider until one succeeds."""
     import openai
 
     errors = []
     for name, key, base_url, chat_model, embed_model in _providers(preferred):
         try:
-            return fn(client_factory(key, base_url), name, chat_model, embed_model)
+            return fn((client_factory or _client)(key, base_url), name, chat_model, embed_model)
         except openai.APIError as exc:  # covers connection, auth, rate-limit and server errors
             errors.append(f"{name}: {type(exc).__name__}: {exc}")
-    raise RuntimeError("All LLM providers failed:\n  " + "\n  ".join(errors))
+    raise ProvidersFailed("All LLM providers failed:\n  " + "\n  ".join(errors))
 
 
-def embed_texts(texts, provider=None, client_factory=_client, batch_size=100):
+def embed_texts(texts, provider=None, client_factory=None, batch_size=100):
     """Return (vectors, provider_name)."""
     def run(client, name, _chat, embed_model):
         vectors = []
@@ -137,7 +151,7 @@ def _source_ids(payload):
                           json.dumps(payload)))
 
 
-def ask(question, index=None, provider=None, client_factory=_client, max_steps=6):
+def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
     """Answer a question. Returns the answer, the provider used, and citation checks."""
     index = index or Index()
     context = index.retrieve(question)

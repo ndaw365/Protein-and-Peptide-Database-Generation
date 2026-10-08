@@ -374,7 +374,7 @@ def build_index(db_path=None, clinvar=config.CLINVAR_URL, gene_effect=None, depm
     # The index is saved before any embedding call, so an embedding failure cannot lose it
     tmp.replace(db_path)
     if embed:
-        from .llm import NoProviderError
+        from .llm import NoProviderError, model_hint
 
         try:
             done_now, total, cards, error = embed_index(db_path)
@@ -383,6 +383,6 @@ def build_index(db_path=None, clinvar=config.CLINVAR_URL, gene_effect=None, depm
             return stats
         stats["embedded"] = f"{total}/{cards}"
         if error:
-            stats["embedding_error"] = (f"{error}. Run `python -m rag_assistant embed` "
-                                        "to resume.")
+            stats["embedding_error"] = f"{error}. " + (
+                model_hint(error) or "Run `python -m rag_assistant embed` to resume.")
     return stats

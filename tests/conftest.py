@@ -14,3 +14,14 @@ def index(tmp_path_factory):
     db = tmp_path_factory.mktemp("index") / "variants.sqlite"
     build_index(db_path=db, clinvar=FIXTURES / "clinvar_sample.tsv")
     return Index(db)
+
+
+@pytest.fixture(autouse=True)
+def no_real_llm_calls(monkeypatch):
+    """Tests must never reach a real provider, even with keys in .env."""
+    from rag_assistant import llm
+
+    def blocked(*_, **__):
+        raise AssertionError("a test tried to create a real LLM client")
+
+    monkeypatch.setattr(llm, "_client", blocked)
