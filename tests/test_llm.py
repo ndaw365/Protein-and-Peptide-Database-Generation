@@ -117,3 +117,58 @@ def test_thought_signatures_are_sent_back(index, monkeypatch):
     assert sent_back["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "sig-123"}}
     assert result["answer"] == "Done [depmap:row183]."
 
+
+def _api_error(cls, message):
+    """An openai error instance without an HTTP response object."""
+    err = cls.__new__(cls)
+    Exception.__init__(err, message)
+    return err
+
+
+class ModelAwareClient(FakeClient):
+    """Fails for chosen models and records which model each request used."""
+
+    def __init__(self, failures, reply):
+        super().__init__()
+        self.failures, self.reply = failures, reply
+
+    def _create(self, **kwargs):
+        self.requests.append(kwargs)
+        if kwargs["model"] in self.failures:
+            raise self.failures[kwargs["model"]]
+        return self.reply
+
+
+@pytest.fixture
+def gemini_with_fallback(monkeypatch):
+    monkeypatch.setattr(config, "OPENAI_API_KEY", None)
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "gm-test")
+    monkeypatch.setattr(config, "GEMINI_CHAT_MODEL", "main-model")
+    monkeypatch.setattr(config, "GEMINI_FALLBACK_MODELS", ["backup-model"])
+
+
+def test_overloaded_model_falls_back_to_backup(index, gemini_with_fallback):
+    client = ModelAwareClient(
+        {"main-model": _api_error(openai.InternalServerError, "Error code: 503 - high demand")},
+        _message(content="Answer [depmap:row183]."))
+    result = llm.ask("NRAS G12C", index=index, client_factory=lambda key, base_url: client)
+    assert [r["model"] for r in client.requests] == ["main-model", "backup-model"]
+    assert result["model"] == "backup-model" and result["answer"] == "Answer [depmap:row183]."
+
+
+def test_all_models_overloaded_lists_each(index, gemini_with_fallback):
+    busy = _api_error(openai.InternalServerError, "Error code: 503 - high demand")
+    client = ModelAwareClient({"main-model": busy, "backup-model": busy}, None)
+    with pytest.raises(llm.ProvidersFailed) as exc:
+        llm.ask("NRAS G12C", index=index, client_factory=lambda key, base_url: client)
+    assert "gemini/main-model: InternalServerError" in str(exc.value)
+    assert "gemini/backup-model: InternalServerError" in str(exc.value)
+
+
+def test_bad_request_does_not_try_backup_model(index, gemini_with_fallback):
+    bad = _api_error(openai.BadRequestError, "Error code: 400 - Function calling is not enabled")
+    client = ModelAwareClient({"main-model": bad}, _message(content="unused"))
+    with pytest.raises(llm.ProvidersFailed):
+        llm.ask("NRAS G12C", index=index, client_factory=lambda key, base_url: client)
+    assert [r["model"] for r in client.requests] == ["main-model"]
+

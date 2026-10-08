@@ -47,10 +47,16 @@ INDEX_DB = DATA_DIR / "variants.sqlite"
 
 CLINVAR_URL = "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/variant_summary.txt.gz"
 
+def _model_list(name, default=""):
+    """Comma-separated model names from the environment, e.g. "a, b" -> ["a", "b"]."""
+    return [m.strip() for m in os.environ.get(name, default).split(",") if m.strip()]
+
+
 # LLM providers: OpenAI first, Gemini (via its OpenAI-compatible endpoint) as fallback
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 OPENAI_EMBED_MODEL = os.environ.get("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+OPENAI_FALLBACK_MODELS = _model_list("OPENAI_FALLBACK_MODELS")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 GEMINI_BASE_URL = os.environ.get(
@@ -58,6 +64,8 @@ GEMINI_BASE_URL = os.environ.get(
 )
 GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.6-flash")
 GEMINI_EMBED_MODEL = os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-001")
+# Chat models tried in order when the main one is overloaded, rate-limited, slow or retired
+GEMINI_FALLBACK_MODELS = _model_list("GEMINI_FALLBACK_MODELS", "gemini-3.5-flash")
 
 # Seconds to wait for one LLM request (newer "thinking" models can take a minute or more)
 LLM_TIMEOUT = float(os.environ.get("LLM_TIMEOUT", "180"))

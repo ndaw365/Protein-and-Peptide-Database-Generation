@@ -76,6 +76,9 @@ class ProvidersFailed(RuntimeError):
 def error_hint(message):
     """A fix to suggest for common provider errors, or None."""
     text = message.lower()
+    if "internalservererror" in text or "high demand" in text or " 503" in text:
+        return ("The model is overloaded, and so were any fallback models. Try again in a few "
+                "minutes, or list more models in GEMINI_FALLBACK_MODELS in .env.")
     if "timeout" in text or "timed out" in text:
         return (f"The provider did not answer within {config.LLM_TIMEOUT:.0f} seconds. Try again; "
                 "if it keeps happening, set a larger LLM_TIMEOUT (in seconds) in .env.")
@@ -87,9 +90,19 @@ def error_hint(message):
 
 
 def _providers(preferred=None):
+    """(name, key, base_url, chat_models, embed_model) for each provider with a key.
+
+    chat_models is the main chat model followed by its fallbacks.
+    """
+    def chain(main, fallbacks):
+        return list(dict.fromkeys([main, *fallbacks]))
+
     available = {
-        "openai": (config.OPENAI_API_KEY, None, config.OPENAI_CHAT_MODEL, config.OPENAI_EMBED_MODEL),
-        "gemini": (config.GEMINI_API_KEY, config.GEMINI_BASE_URL, config.GEMINI_CHAT_MODEL,
+        "openai": (config.OPENAI_API_KEY, None,
+                   chain(config.OPENAI_CHAT_MODEL, config.OPENAI_FALLBACK_MODELS),
+                   config.OPENAI_EMBED_MODEL),
+        "gemini": (config.GEMINI_API_KEY, config.GEMINI_BASE_URL,
+                   chain(config.GEMINI_CHAT_MODEL, config.GEMINI_FALLBACK_MODELS),
                    config.GEMINI_EMBED_MODEL),
     }
     order = [preferred] if preferred else ["openai", "gemini"]
@@ -108,16 +121,28 @@ def _client(api_key, base_url):
     return OpenAI(api_key=api_key, base_url=base_url, max_retries=1, timeout=config.LLM_TIMEOUT)
 
 
-def _with_fallback(fn, preferred=None, client_factory=None):
-    """Run fn(client, name, chat_model, embed_model) on each provider until one succeeds."""
+def _with_fallback(fn, preferred=None, client_factory=None, chat_fallbacks=True):
+    """Run fn(client, name, chat_model, embed_model) until a provider and model succeed.
+
+    Within a provider, the next chat model is tried only for errors another model can fix
+    (overloaded, rate-limited, timed out, retired). Anything else, such as a bad key, moves
+    on to the next provider.
+    """
     import openai
 
+    model_errors = (openai.InternalServerError, openai.RateLimitError, openai.APITimeoutError,
+                    openai.NotFoundError)
     errors = []
-    for name, key, base_url, chat_model, embed_model in _providers(preferred):
-        try:
-            return fn((client_factory or _client)(key, base_url), name, chat_model, embed_model)
-        except openai.APIError as exc:  # covers connection, auth, rate-limit and server errors
-            errors.append(f"{name}: {type(exc).__name__}: {exc}")
+    for name, key, base_url, chat_models, embed_model in _providers(preferred):
+        client = (client_factory or _client)(key, base_url)
+        for chat_model in (chat_models if chat_fallbacks else chat_models[:1]):
+            try:
+                return fn(client, name, chat_model, embed_model)
+            except model_errors as exc:
+                errors.append(f"{name}/{chat_model}: {type(exc).__name__}: {exc}")
+            except openai.APIError as exc:  # auth, bad request, connection: next provider
+                errors.append(f"{name}/{chat_model}: {type(exc).__name__}: {exc}")
+                break
     raise ProvidersFailed("All LLM providers failed:\n  " + "\n  ".join(errors))
 
 
@@ -130,7 +155,7 @@ def embed_texts(texts, provider=None, client_factory=None, batch_size=100):
             vectors += [d.embedding for d in resp.data]
         return vectors, name
 
-    return _with_fallback(run, provider, client_factory)
+    return _with_fallback(run, provider, client_factory, chat_fallbacks=False)
 
 
 def _compact(record):

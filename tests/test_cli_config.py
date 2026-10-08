@@ -86,6 +86,8 @@ def test_retired_model_error_is_readable(db, capsys, monkeypatch):
 
     monkeypatch.setattr(config, "OPENAI_API_KEY", None)
     monkeypatch.setattr(config, "GEMINI_API_KEY", "gm-test")
+    monkeypatch.setattr(config, "GEMINI_CHAT_MODEL", "gemini-2.5-flash")
+    monkeypatch.setattr(config, "GEMINI_FALLBACK_MODELS", ["gemini-3.5-flash"])
 
     def retired(*_, **__):
         err = openai.NotFoundError.__new__(openai.NotFoundError)
@@ -99,7 +101,9 @@ def test_retired_model_error_is_readable(db, capsys, monkeypatch):
 
     assert cli.main(["--db", db, "ask", "NRAS G12C"]) == 1
     err = capsys.readouterr().err
-    assert "gemini: NotFoundError" in err
+    # the retired main model and then the fallback model were both tried
+    assert "gemini/gemini-2.5-flash: NotFoundError" in err
+    assert "gemini/gemini-3.5-flash: NotFoundError" in err
     assert "GEMINI_CHAT_MODEL" in err and "Traceback" not in err
 
 
@@ -109,3 +113,5 @@ def test_error_hint_only_for_model_errors():
     assert error_hint("gemini: NotFoundError: 404 model not found")
     assert error_hint("gemini: RateLimitError: 429 quota exceeded") is None
     assert "LLM_TIMEOUT" in error_hint("gemini: APITimeoutError: Request timed out.")
+    assert "GEMINI_FALLBACK_MODELS" in error_hint("gemini/x: InternalServerError: Error code: 503")
+
