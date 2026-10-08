@@ -177,6 +177,12 @@ python -m rag_assistant ask "..." --no-llm           # show retrieved records on
 python -m rag_assistant ask "..." --provider gemini  # force one provider
 ```
 
+Default models are `gpt-4o-mini` / `text-embedding-3-small` (OpenAI) and `gemini-3.8-flash` /
+`gemini-embedding-001` (Gemini). Providers retire models over time: if you get a "model not
+found" or "no longer available" error, set `GEMINI_CHAT_MODEL`, `GEMINI_EMBED_MODEL`,
+`OPENAI_CHAT_MODEL` or `OPENAI_EMBED_MODEL` in `.env` to the model the error suggests.
+Each request waits up to 180 seconds (one retry); set `LLM_TIMEOUT` in `.env` to change that.
+
 ### Tests and evaluation
 
 ```bash

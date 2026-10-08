@@ -69,7 +69,7 @@ def main(argv=None):
 
     if args.command == "embed":
         from .ingest import embed_index
-        from .llm import NoProviderError
+        from .llm import NoProviderError, error_hint
 
         try:
             done_now, total, cards, error = embed_index(args.db, provider=args.provider)
@@ -78,7 +78,8 @@ def main(argv=None):
             return 2
         print(f"Embedded {done_now} cards this run; {total}/{cards} cards have embeddings.")
         if error:
-            print(f"Stopped early: {error}\nRun the same command again to resume.", file=sys.stderr)
+            print(f"Stopped early: {error}", file=sys.stderr)
+            print(error_hint(error) or "Run the same command again to resume.", file=sys.stderr)
             return 1
         return 0
 
@@ -98,13 +99,18 @@ def main(argv=None):
                 print(f"Showing {len(result['records'])} of {result['total']} matching variants.")
             _print_records(result["records"])
             return 0
-        from .llm import NoProviderError, ask
+        from .llm import NoProviderError, ProvidersFailed, ask, error_hint
 
         try:
             result = ask(args.question, index=index, provider=args.provider)
         except NoProviderError as exc:
             print(exc, file=sys.stderr)
             return 2
+        except ProvidersFailed as exc:
+            print(exc, file=sys.stderr)
+            if error_hint(str(exc)):
+                print(error_hint(str(exc)), file=sys.stderr)
+            return 1
         if args.json:
             print(json.dumps(result, indent=2))
         else:
