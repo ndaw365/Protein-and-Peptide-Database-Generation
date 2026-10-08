@@ -92,3 +92,28 @@ def test_no_keys_raises(index, monkeypatch):
     monkeypatch.setattr(config, "GEMINI_API_KEY", None)
     with pytest.raises(llm.NoProviderError):
         llm.ask("PERM1 P750Q", index=index)
+
+
+def test_thought_signatures_are_sent_back(index, monkeypatch):
+    """Gemini 3 needs each tool call's thought_signature echoed in the next request."""
+    from openai.types.chat import ChatCompletion
+
+    monkeypatch.setattr(config, "OPENAI_API_KEY", None)
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "gm-test")
+    tool_turn = ChatCompletion.model_validate({
+        "id": "x", "object": "chat.completion", "created": 0, "model": "gemini",
+        "choices": [{"index": 0, "finish_reason": "tool_calls", "message": {
+            "role": "assistant", "content": None, "tool_calls": [{
+                "id": "call_1", "type": "function",
+                "function": {"name": "lookup_variant",
+                             "arguments": json.dumps({"gene": "NRAS", "protein_change": "G12C"})},
+                "extra_content": {"google": {"thought_signature": "sig-123"}}}]}}]})
+    client = FakeClient(replies=[tool_turn, _message(content="Done [depmap:row183].")])
+
+    result = llm.ask("NRAS G12C", index=index, client_factory=lambda key, base_url: client)
+
+    sent_back = client.requests[1]["messages"][2]
+    assert sent_back["role"] == "assistant" and sent_back["content"] == ""
+    assert sent_back["tool_calls"][0]["extra_content"] == {"google": {"thought_signature": "sig-123"}}
+    assert result["answer"] == "Done [depmap:row183]."
+

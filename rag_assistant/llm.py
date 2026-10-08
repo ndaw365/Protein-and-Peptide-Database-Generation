@@ -154,6 +154,24 @@ def _source_ids(payload):
                           json.dumps(payload)))
 
 
+def _assistant_turn(msg):
+    """The model's tool-call message, to send back on the next request.
+
+    The SDK's own dump keeps provider-specific fields; Gemini 3 rejects the follow-up
+    request unless each tool call's extra_content.google.thought_signature comes back.
+    """
+    if hasattr(msg, "model_dump"):
+        turn = msg.model_dump(exclude_none=True)
+    else:
+        turn = {"tool_calls": [
+            {"id": c.id, "type": "function",
+             "function": {"name": c.function.name, "arguments": c.function.arguments}}
+            for c in msg.tool_calls]}
+    turn["role"] = "assistant"
+    turn["content"] = msg.content or ""
+    return turn
+
+
 def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
     """Answer a question. Returns the answer, the provider used, and citation checks."""
     index = index or Index()
@@ -185,10 +203,7 @@ def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
                     "cited_sources": sorted(cited),
                     "unverified_citations": sorted(cited - retrieved),
                 }
-            messages.append({"role": "assistant", "content": msg.content or "", "tool_calls": [
-                {"id": c.id, "type": "function",
-                 "function": {"name": c.function.name, "arguments": c.function.arguments}}
-                for c in msg.tool_calls]})
+            messages.append(_assistant_turn(msg))
             for call in msg.tool_calls:
                 try:
                     args = json.loads(call.function.arguments or "{}")
