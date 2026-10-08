@@ -117,7 +117,7 @@ NRAS G12C is pathogenic/likely pathogenic in ClinVar [clinvar:VCV…] and a hots
 |---------|-----|
 | `No API key for openai or gemini` | Create `.env` with your key (see Setup) |
 | `404 … no longer available` | The model was retired. Set `GEMINI_CHAT_MODEL=` in `.env` to the model the error names |
-| `503 … high demand` | The model is overloaded. Wait, or switch to another model |
+| `503 … high demand` | The model is overloaded. The assistant then tries the models in `GEMINI_FALLBACK_MODELS` (default `gemini-3.5-flash`); if all are busy, wait or add more |
 | `APITimeoutError` | Retry, raise `LLM_TIMEOUT` (default 180 s), or switch model |
 | `Function calling is not enabled` | Use a regular flash model, not `lite` or `gemma` |
 | `Could not read ClinVar file … delete it` | Delete the file in `data/` and run `ingest` again |
@@ -125,7 +125,9 @@ NRAS G12C is pathogenic/likely pathogenic in ClinVar [clinvar:VCV…] and a hots
 | A `.env` setting seems ignored | The key appears twice. Edit the first line |
 
 Default models are `gemini-3.6-flash` / `gemini-embedding-001` (Gemini) and `gpt-4o-mini` /
-`text-embedding-3-small` (OpenAI). To list the Gemini models your key can use:
+`text-embedding-3-small` (OpenAI). If the main chat model is overloaded, rate-limited, slow or
+retired, the next one in `GEMINI_FALLBACK_MODELS` (or `OPENAI_FALLBACK_MODELS`) answers, and
+the footer of the answer names the model used. To list the Gemini models your key can use:
 
 ```bash
 KEY=$(grep '^GEMINI_API_KEY=' .env | cut -d= -f2-)
@@ -148,7 +150,7 @@ curl -sS -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1b
 ## Tests
 
 ```bash
-python -m pytest          # 65 tests; fake ClinVar and LLM, no keys needed (CI runs them on every push)
+python -m pytest          # 68 tests; fake ClinVar and LLM, no keys needed (CI runs them on every push)
 python eval/run.py        # retrieval on 40 questions: 40/40 correct, ~0.3 ms each (CSV scan: 8/40)
 python eval/run.py --llm  # also checks that LLM answers cite the right record (needs a key)
 ```
