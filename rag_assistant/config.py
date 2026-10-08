@@ -56,7 +56,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_
 GEMINI_BASE_URL = os.environ.get(
     "GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/"
 )
-GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.8-flash")
+GEMINI_CHAT_MODEL = os.environ.get("GEMINI_CHAT_MODEL", "gemini-3.6-flash")
 GEMINI_EMBED_MODEL = os.environ.get("GEMINI_EMBED_MODEL", "gemini-embedding-001")
 
 # Seconds to wait for one LLM request (newer "thinking" models can take a minute or more)
