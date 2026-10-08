@@ -213,6 +213,7 @@ def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
                                         f"{json.dumps(context_payload, indent=1)}"},
         ]
         retrieved = _source_ids(context_payload)
+        evidence = list(context_payload["records"])  # everything the model was shown
         tool_log = []
         for _ in range(max_steps):
             resp = client.chat.completions.create(model=chat_model, messages=messages,
@@ -227,6 +228,7 @@ def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
                     "retrieval_mode": context["mode"], "tool_calls": tool_log,
                     "cited_sources": sorted(cited),
                     "unverified_citations": sorted(cited - retrieved),
+                    "evidence": evidence,
                 }
             messages.append(_assistant_turn(msg))
             for call in msg.tool_calls:
@@ -236,11 +238,12 @@ def ask(question, index=None, provider=None, client_factory=None, max_steps=6):
                 except (TypeError, ValueError) as exc:
                     result = {"error": str(exc)}
                 retrieved |= _source_ids(result)
+                evidence += result.get("records", [])
                 tool_log.append({"tool": call.function.name, "arguments": call.function.arguments})
                 messages.append({"role": "tool", "tool_call_id": call.id,
                                  "content": json.dumps(result)})
         return {"answer": "Stopped: too many tool calls without a final answer.", "provider": name,
                 "model": chat_model, "retrieval_mode": context["mode"], "tool_calls": tool_log,
-                "cited_sources": [], "unverified_citations": []}
+                "cited_sources": [], "unverified_citations": [], "evidence": evidence}
 
     return _with_fallback(run, provider, client_factory)

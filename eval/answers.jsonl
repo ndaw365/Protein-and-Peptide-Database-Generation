@@ -1,0 +1,18 @@
+{"id": "rsid-tp53", "category": "fact", "question": "What is rs121913344 in MOLT4?", "must_include": [["TP53"], ["R306", "Arg306"]], "expected_source": "depmap:row1535"}
+{"id": "nras-hgvs3", "category": "fact", "question": "Tell me about p.Gly12Cys in NRAS", "must_include": [["pathogenic"], ["hotspot"]], "expected_source": "depmap:row183"}
+{"id": "pten-fs", "category": "fact", "question": "What is the PTEN variant in MOLT4?", "must_include": [["K267"], ["frameshift", "fs"]], "expected_source": "depmap:row378"}
+{"id": "perm1-peptide", "category": "fact", "question": "What peptide covers PERM1 P750Q in the peptide database?", "must_include": [["RGPVPSFAFSQNDMCLVFVAFATWAVRTSDQHTPDAWKTALLANVGTISAIR"]], "expected_source": "peptide:row1"}
+{"id": "stk11-recovered", "category": "fact", "question": "Is STK11 M125I in the peptide database?", "must_include": [["yes", "is in the peptide database", "is included", "is present"]], "must_not_include": ["not in the peptide database"], "expected_source": "peptide:row953"}
+{"id": "helz2-dropped", "category": "fact", "question": "Why is HELZ2 R563L not in the peptide database?", "must_include": [["mismatch", "does not match", "doesn't match"]], "expected_source": "dropped:row1"}
+{"id": "tsc1-dropped", "category": "fact", "question": "Is TSC1 P1142_P1143delinsQT in the peptide database?", "must_include": [["substitution"]], "expected_source": "dropped:row2"}
+{"id": "notch1-list", "category": "list", "question": "What variants does MOLT4 have in NOTCH1?", "must_include": [["P2514"], ["R1854H", "Arg1854His"], ["L1600P", "Leu1600Pro"], ["A348T", "Ala348Thr"]]}
+{"id": "kmt2d-count", "category": "list", "question": "How many variants does MOLT4 have in KMT2D?", "must_include": [["9", "nine"]]}
+{"id": "q5sv97-list", "category": "list", "question": "Which variants are on UniProt Q5SV97?", "must_include": [["P750Q", "Pro750Gln"], ["K184"]]}
+{"id": "hotspots", "category": "list", "question": "Which MOLT4 variants are mutation hotspots?", "must_include": [["NRAS"], ["TP53"], ["STK11"]]}
+{"id": "benign-only", "category": "list", "question": "Which variants does DepMap's ClinVar annotation call benign, not likely benign?", "must_include": [["MT-ND6"]]}
+{"id": "ms-spanning", "category": "list", "question": "Which mass-spec-detected peptides actually span the mutated residue?", "must_include": [["EVL"], ["COPS7B"], ["TUBA4A"], ["CDC45"], ["DUSP7"], ["BRD4"], ["P2RX4"]]}
+{"id": "evl-ms", "category": "trap", "question": "Was the EVL D20N variant detected by mass spectrometry?", "must_include": [["ASVMVYDNTSK"]], "must_not_include": ["not detected"], "expected_source": "ms:row3"}
+{"id": "ppp1ca-ms", "category": "trap", "question": "Was PPP1CA D242N detected by mass spectrometry?", "must_include": [["does not span", "doesn't span", "does not cover", "doesn't cover", "not span", "not cover", "wild-type", "wild type", "normal protein", "not evidence", "no evidence"]]}
+{"id": "braf-absent", "category": "refusal", "question": "Does MOLT4 have a BRAF V600E mutation?", "expect_refusal": true}
+{"id": "kras-absent", "category": "refusal", "question": "Is there a KRAS mutation in MOLT4?", "expect_refusal": true}
+{"id": "drugs", "category": "refusal", "question": "What drugs target NRAS G12C?", "expect_refusal": true, "must_not_include": ["sotorasib", "adagrasib", "divarasib", "trametinib"]}

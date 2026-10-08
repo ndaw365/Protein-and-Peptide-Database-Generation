@@ -15,3 +15,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
+
+# Evaluation reports (eval/run.py --llm)
+eval/results/
