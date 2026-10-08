@@ -103,8 +103,9 @@ def test_retired_model_error_is_readable(db, capsys, monkeypatch):
     assert "GEMINI_CHAT_MODEL" in err and "Traceback" not in err
 
 
-def test_model_hint_only_for_model_errors():
-    from rag_assistant.llm import model_hint
+def test_error_hint_only_for_model_errors():
+    from rag_assistant.llm import error_hint
 
-    assert model_hint("gemini: NotFoundError: 404 model not found")
-    assert model_hint("gemini: RateLimitError: 429 quota exceeded") is None
+    assert error_hint("gemini: NotFoundError: 404 model not found")
+    assert error_hint("gemini: RateLimitError: 429 quota exceeded") is None
+    assert "LLM_TIMEOUT" in error_hint("gemini: APITimeoutError: Request timed out.")

@@ -73,9 +73,12 @@ class ProvidersFailed(RuntimeError):
     """Every configured provider returned an error."""
 
 
-def model_hint(message):
-    """A fix to suggest when an error looks like a retired or misspelled model name."""
+def error_hint(message):
+    """A fix to suggest for common provider errors, or None."""
     text = message.lower()
+    if "timeout" in text or "timed out" in text:
+        return (f"The provider did not answer within {config.LLM_TIMEOUT:.0f} seconds. Try again; "
+                "if it keeps happening, set a larger LLM_TIMEOUT (in seconds) in .env.")
     if any(s in text for s in ("notfounderror", "not found", "no longer available", "does not exist")):
         return ("The model name looks retired or unknown. Set GEMINI_CHAT_MODEL / "
                 "GEMINI_EMBED_MODEL (or OPENAI_CHAT_MODEL / OPENAI_EMBED_MODEL) in .env to the "
@@ -102,7 +105,7 @@ def _providers(preferred=None):
 def _client(api_key, base_url):
     from openai import OpenAI
 
-    return OpenAI(api_key=api_key, base_url=base_url, max_retries=2, timeout=60)
+    return OpenAI(api_key=api_key, base_url=base_url, max_retries=1, timeout=config.LLM_TIMEOUT)
 
 
 def _with_fallback(fn, preferred=None, client_factory=None):
