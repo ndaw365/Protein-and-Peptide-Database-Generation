@@ -85,7 +85,11 @@ def main(argv=None):
 
     from .retrieve import Index
 
-    index = Index(args.db)
+    try:
+        index = Index(args.db)
+    except (FileNotFoundError, RuntimeError) as exc:  # no index yet, or built by an older version
+        print(exc, file=sys.stderr)
+        return 2
     if args.command == "lookup":
         _print_records(index.lookup(gene=args.gene, protein_change=args.protein_change,
                                     rsid=args.rsid, uniprot=args.uniprot))

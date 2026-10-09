@@ -122,6 +122,7 @@ NRAS G12C is pathogenic/likely pathogenic in ClinVar [clinvar:VCV…] and a hots
 | `Function calling is not enabled` | Use a regular flash model, not `lite` or `gemma` |
 | `Could not read ClinVar file … delete it` | Delete the file in `data/` and run `ingest` again |
 | `Stopped early: … RateLimitError` | Run `embed` again; it resumes |
+| `RateLimitError 429 … exceeded your current quota` | Free-tier requests-per-minute limit. Wait a minute; for `eval/run.py` add `--delay 10` |
 | A `.env` setting seems ignored | The key appears twice. Edit the first line |
 
 Default models are `gemini-3.6-flash` / `gemini-embedding-001` (Gemini) and `gpt-4o-mini` /
@@ -150,12 +151,18 @@ curl -sS -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1b
 ## Tests and evaluation
 
 ```bash
-python -m pytest                     # 81 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
+python -m pytest                     # 86 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
 python eval/run.py                   # retrieval scorecard (no key)
 python eval/run.py --llm             # + answer scorecard (needs a key)
 python eval/run.py --llm --judge     # + faithfulness: a second LLM call checks each claim against the evidence
 python eval/run.py --llm --models gemini-3.6-flash,gemini-3.5-flash   # compare models side by side
+python eval/run.py --llm --delay 10 --only trap,refusal                # pace requests; run some categories
 ```
+
+Each case prints a progress line (`[3/18] helz2-dropped  PASS  4.2 s`). Free Gemini keys allow
+only a few requests per minute, and one case can make several requests. A rate-limited case
+waits 60 s and retries once (`--retry-wait`); add `--delay 10` if many cases still hit the
+limit.
 
 **Retrieval** (`eval/questions.jsonl`, 40 generated questions in 5 phrasings) reports top-1
 accuracy, recall@5 and latency against a plain CSV scan. It's currently 40/40 at about 0.3 ms,

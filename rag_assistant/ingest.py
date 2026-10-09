@@ -43,7 +43,7 @@ CREATE INDEX peptides_gene_change ON peptides (gene, change_key);
 
 CREATE TABLE dropped (
     row_id INTEGER PRIMARY KEY,      -- 1-based data row in MOLT4_dropped_variants.csv
-    gene TEXT, change_key TEXT, reason TEXT
+    gene TEXT, change_key TEXT, protein_change TEXT, reason TEXT
 );
 CREATE INDEX dropped_gene_change ON dropped (gene, change_key);
 
@@ -121,10 +121,10 @@ def load_dropped(conn, path):
         return 0
     with open(path, newline="", encoding="utf-8") as fh:
         rows = [
-            (i, r["Gene"], protein_change_key(r["Protein.Change"]), r["Reason"])
+            (i, r["Gene"], protein_change_key(r["Protein.Change"]), r["Protein.Change"], r["Reason"])
             for i, r in enumerate(csv.DictReader(fh), start=1)
         ]
-    conn.executemany("INSERT INTO dropped VALUES (?,?,?,?)", rows)
+    conn.executemany("INSERT INTO dropped VALUES (?,?,?,?,?)", rows)
     return len(rows)
 
 

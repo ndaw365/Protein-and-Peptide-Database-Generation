@@ -55,6 +55,10 @@ class Index:
                     f"No index at {self.db_path}. Run: python -m rag_assistant ingest")
             self.conn = sqlite3.connect(self.db_path)
         self.conn.create_function("has_term", 2, has_term, deterministic=True)
+        dropped_cols = {row[1] for row in self.conn.execute("PRAGMA table_info(dropped)")}
+        if dropped_cols and "protein_change" not in dropped_cols:
+            raise RuntimeError("The index was built by an older version. Rebuild it with: "
+                               "python -m rag_assistant ingest")
         self.genes = {g for (g,) in self.conn.execute("SELECT DISTINCT gene FROM depmap")}
         self._bm25 = None
         self._vectors = None
@@ -92,12 +96,17 @@ class Index:
                 pdata = json.loads(pep[1])
                 record["peptide"] = {k: pdata[k] for k in PEPTIDE_FIELDS if pdata.get(k) not in (None, "", "NA")}
                 record["source_ids"].append(f"peptide:row{pep[0]}")
-            drop = self.conn.execute(
-                "SELECT row_id, reason FROM dropped WHERE gene = ? AND change_key = ?",
-                (gene, change_key)).fetchone()
-            if drop:
-                record["dropped_reason"] = drop[1]
-                record["source_ids"].append(f"dropped:row{drop[0]}")
+
+        # Changes that aren't single substitutions (e.g. P1142_P1143delinsQT) have no
+        # change_key, so the drop reason is matched on the protein change as written.
+        drop = self.conn.execute(
+            "SELECT row_id, reason FROM dropped WHERE gene = ? AND change_key = ?",
+            (gene, change_key)).fetchone() if change_key else self.conn.execute(
+            "SELECT row_id, reason FROM dropped WHERE gene = ? AND protein_change = ?",
+            (gene, protein_change)).fetchone() if protein_change else None
+        if drop:
+            record["dropped_reason"] = drop[1]
+            record["source_ids"].append(f"dropped:row{drop[0]}")
 
         if change_key:
             mut_pos = _int((record["peptide"] or {}).get("mutation_pos_in_peptide_fwd"))

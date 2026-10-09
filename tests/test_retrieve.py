@@ -99,3 +99,27 @@ def test_gene_only_question_lists_the_genes_variants(index):
     assert result["mode"] == "exact"
     assert result["total"] == 9 and len(result["records"]) == 5
     assert {r["gene"] for r in result["records"]} == {"KMT2D"}
+
+
+def test_dropped_reason_for_non_substitution(index):
+    # Regression: no change_key for delins, so its drop reason was never attached
+    result = index.retrieve("Is TSC1 P1142_P1143delinsQT in the peptide database?")
+    delins = [r for r in result["records"] if r["protein_change"] == "p.P1142_P1143delinsQT"]
+    assert delins and delins[0]["dropped_reason"].startswith("Protein change is not a single")
+    assert "dropped:row2" in delins[0]["source_ids"]
+
+
+def test_old_index_asks_for_rebuild(tmp_path):
+    import sqlite3
+
+    import pytest
+
+    from rag_assistant.retrieve import Index
+
+    db = tmp_path / "old.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript("CREATE TABLE depmap (gene TEXT);"
+                       "CREATE TABLE dropped (row_id INTEGER, gene TEXT, change_key TEXT, reason TEXT);")
+    conn.close()
+    with pytest.raises(RuntimeError, match="rag_assistant ingest"):
+        Index(db)

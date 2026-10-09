@@ -124,3 +124,42 @@ def test_judge_uses_configured_model_not_tested_one(monkeypatch):
         assert judge("q", "a", [])["faithfulness"] == 1.0
         assert config.GEMINI_CHAT_MODEL == "tested-model"  # restored after judging
     assert used == ["judge-model"]
+
+
+QUOTA = ("All LLM providers failed:\n  gemini/gemini-3.6-flash: RateLimitError: Error code: 429 - "
+         "[{'error': {'message': 'You exceeded your current quota ...'}}]\n"
+         "  gemini/gemini-3.5-flash: RateLimitError: Error code: 429 - [...]")
+
+
+def test_short_error_lists_each_model_tried():
+    assert run.short_error(RuntimeError(QUOTA)) == (
+        "gemini/gemini-3.6-flash RateLimitError 429; gemini/gemini-3.5-flash RateLimitError 429")
+    assert run.short_error(ValueError("boom")) == "ValueError: boom"
+
+
+def test_rate_limited_case_waits_and_retries_once():
+    calls, waits, log = [], [], []
+    case = {"id": "a", "category": "fact", "question": "q", "must_include": [["ok"]]}
+
+    def flaky(question):
+        calls.append(question)
+        if len(calls) == 1:
+            raise RuntimeError(QUOTA)
+        return {"answer": "ok", "cited_sources": [], "unverified_citations": []}
+
+    rows = run.run_answers([case], flaky, retry_wait=60, log=log.append, sleep=waits.append)
+    assert len(calls) == 2 and waits == [60] and rows[0]["passed"]
+    assert "rate limited, waiting 60 s" in log[0] and "PASS" in log[1]
+
+
+def test_rate_limit_twice_is_an_error_and_delay_spaces_cases():
+    cases = [{"id": i, "category": "fact", "question": i, "must_include": [["x"]]} for i in "ab"]
+    waits = []
+
+    def always_limited(question):
+        raise RuntimeError(QUOTA)
+
+    rows = run.run_answers(cases, always_limited, delay=5, retry_wait=60,
+                           log=lambda line: None, sleep=waits.append)
+    assert [r["error"].split(";")[0] for r in rows] == ["gemini/gemini-3.6-flash RateLimitError 429"] * 2
+    assert waits == [60, 5, 60]  # retry wait, delay before case 2, retry wait
