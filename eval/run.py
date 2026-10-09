@@ -15,6 +15,7 @@ import argparse
 import contextlib
 import csv
 import json
+import re
 import statistics
 import sys
 import time
@@ -99,25 +100,51 @@ def only_model(provider, model):
             setattr(config, n, v)
 
 
-def run_answers(cases, ask_fn, judge_fn=None):
-    """Ask every case; return one row per case with the answer, checks and timing."""
+def short_error(exc):
+    """One line per model tried, e.g. "gemini/gemini-3.6-flash: RateLimitError 429"."""
+    lines = [l.strip() for l in str(exc).splitlines() if l.strip()]
+    tried = [re.match(r"(\S+/\S+): (\w+)(?:: Error code: (\d+))?", l) for l in lines]
+    parts = [" ".join(filter(None, m.groups())) for m in tried if m]
+    return "; ".join(parts) if parts else f"{type(exc).__name__}: {str(exc)[:200]}"
+
+
+def is_rate_limit(exc):
+    return "RateLimitError" in str(exc) or "429" in str(exc)
+
+
+def run_answers(cases, ask_fn, judge_fn=None, delay=0.0, retry_wait=60.0, log=print, sleep=time.sleep):
+    """Ask every case and print one progress line each.
+
+    delay waits between cases (free tiers allow only a few requests per minute). When a
+    case hits a rate limit, it waits retry_wait seconds and tries once more.
+    """
     rows = []
-    for case in cases:
+    for n, case in enumerate(cases, start=1):
+        if n > 1 and delay:
+            sleep(delay)
         row = {"id": case["id"], "category": case["category"], "question": case["question"]}
         start = time.perf_counter()
-        try:
-            result = ask_fn(case["question"])
-        except Exception as exc:  # provider errors are scored as failures, not crashes
-            row.update(error=f"{type(exc).__name__}: {str(exc)[:300]}", passed=False,
-                       correct=False, seconds=time.perf_counter() - start)
-            rows.append(row)
-            continue
+        result = None
+        for attempt in (1, 2):
+            try:
+                result = ask_fn(case["question"])
+                break
+            except Exception as exc:  # provider errors are scored as failures, not crashes
+                if attempt == 1 and retry_wait and is_rate_limit(exc):
+                    log(f"  [{n}/{len(cases)}] {case['id']}: rate limited, waiting {retry_wait:.0f} s")
+                    sleep(retry_wait)
+                    continue
+                row.update(error=short_error(exc), passed=False, correct=False)
         row["seconds"] = time.perf_counter() - start
-        row["answer"] = result["answer"]
-        row["model"] = result.get("model")
-        row.update(score_answer(case, result))
-        if judge_fn:
-            row["judgement"] = judge_fn(case["question"], result["answer"], result.get("evidence", []))
+        if result is not None:
+            row["answer"] = result["answer"]
+            row["model"] = result.get("model")
+            row.update(score_answer(case, result))
+            if judge_fn:
+                row["judgement"] = judge_fn(case["question"], result["answer"],
+                                            result.get("evidence", []))
+        status = "ERROR" if "error" in row else "PASS" if row["passed"] else "FAIL"
+        log(f"  [{n}/{len(cases)}] {case['id']:<16} {status:<5} {row['seconds']:5.1f} s")
         rows.append(row)
     return rows
 
@@ -137,6 +164,7 @@ def summarize(rows):
         "cases": len(rows),
         "errors": len(rows) - len(answered),
         "passed": rate(rows, "passed"),
+        "passed_of_answered": rate(answered, "passed"),
         "correct": rate(rows, "correct"),
         "by_category": {c: rate(rs, "correct") for c, rs in sorted(by_cat.items())},
         "cited_expected": rate(answered, "cited_expected"),
@@ -151,7 +179,8 @@ def print_scorecard(model, summary, rows):
         return "  n/a" if x is None else f"{100 * x:4.0f}%"
 
     print(f"ANSWERS  {model}  (eval/answers.jsonl, {summary['cases']} cases)")
-    print(f"  passed (correct + right citation + nothing unverified): {pct(summary['passed'])}")
+    print(f"  passed (correct + right citation + nothing unverified): {pct(summary['passed'])}"
+          f"   of answered: {pct(summary['passed_of_answered'])}")
     print(f"  correct: {pct(summary['correct'])}   "
           + "   ".join(f"{c} {pct(v)}" for c, v in summary["by_category"].items()))
     print(f"  cited expected source: {pct(summary['cited_expected'])}   "
@@ -213,9 +242,17 @@ def main():
     parser.add_argument("--models", help="comma-separated models to compare, e.g. "
                                          "gemini-3.6-flash,openai/gpt-4o-mini")
     parser.add_argument("--judge", action="store_true", help="also judge faithfulness with an LLM")
+    parser.add_argument("--only", help="comma-separated categories to run: fact,list,trap,refusal")
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="seconds to wait between cases, to stay under per-minute quotas")
+    parser.add_argument("--retry-wait", type=float, default=60.0,
+                        help="seconds to wait before retrying a rate-limited case once (0 = no retry)")
     args = parser.parse_args()
 
-    index = Index(args.db)
+    try:
+        index = Index(args.db)
+    except (FileNotFoundError, RuntimeError) as exc:  # no index yet, or built by an older version
+        sys.exit(str(exc))
     print_retrieval(evaluate_retrieval(index, [json.loads(l) for l in open(args.questions)]))
     if not args.llm:
         return
@@ -227,13 +264,20 @@ def main():
     except NoProviderError as exc:
         sys.exit(str(exc))
     cases = [json.loads(l) for l in open(args.answers)]
+    if args.only:
+        wanted = {c.strip() for c in args.only.split(",")}
+        cases = [c for c in cases if c["category"] in wanted]
     judge = make_judge() if args.judge else None
     models = [parse_model(m) for m in args.models.split(",")] if args.models else [(None, None)]
     report = {}
     for provider, model in models:
         label = f"{provider}/{model}" if model else "configured model (with fallbacks)"
+        print(f"ANSWERS  {label}: running {len(cases)} cases")
         with only_model(provider, model) if model else contextlib.nullcontext():
-            rows = run_answers(cases, lambda q: ask(q, index=index, provider=provider), judge)
+            rows = run_answers(cases, lambda q: ask(q, index=index, provider=provider), judge,
+                               delay=args.delay, retry_wait=args.retry_wait,
+                               log=lambda line: print(line, flush=True))
+        print()
         summary = summarize(rows)
         print_scorecard(label, summary, rows)
         report[label] = {"summary": summary, "rows": rows}

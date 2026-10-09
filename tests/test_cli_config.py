@@ -43,9 +43,9 @@ def test_ask_without_keys_exits_cleanly(db, capsys, monkeypatch):
     assert "GEMINI_API_KEY" in capsys.readouterr().err
 
 
-def test_missing_index_message(tmp_path):
-    with pytest.raises(FileNotFoundError, match="rag_assistant ingest"):
-        cli.main(["--db", str(tmp_path / "none.sqlite"), "lookup", "NRAS", "G12C"])
+def test_missing_index_message(tmp_path, capsys):
+    assert cli.main(["--db", str(tmp_path / "none.sqlite"), "lookup", "NRAS", "G12C"]) == 2
+    assert "rag_assistant ingest" in capsys.readouterr().err
 
 
 def test_load_dotenv(tmp_path, monkeypatch):
