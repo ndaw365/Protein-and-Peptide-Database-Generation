@@ -1,7 +1,11 @@
-"""Generate eval/questions.jsonl: gold variant-lookup questions in mixed phrasings.
+"""Generate eval/questions.jsonl: gold retrieval questions with their relevant records.
 
-Each question names one MOLT4 variant (by 1-letter change, 3-letter HGVS, dbSNP ID or
-UniProt accession + change) and records the DepMap row that a correct lookup must return.
+Three kinds, each recording "relevant", the DepMap rows a correct retrieval returns:
+- single-answer: one MOLT4 variant named by 1-letter change, 3-letter HGVS, dbSNP ID or
+  UniProt accession + change (also kept as "expected_source")
+- gene_list: "list every variant in GENE"; relevant is all of that gene's rows
+- absent: a well-known variant MOLT4 does not carry; relevant is empty and no exact match
+  should be returned
 """
 
 import csv
@@ -20,6 +24,10 @@ TEMPLATES = {
     "rsid": "Which MOLT4 variant is {rsid} and what is its clinical significance?",
     "lowercase_gene": "peptide covering {gene_lower} {change}",
 }
+
+# Well-known cancer variants that MOLT4 does not carry, in genes it has and genes it lacks
+ABSENT = [("BRAF", "V600E"), ("KRAS", "G12D"), ("IDH1", "R132H"), ("JAK2", "V617F"),
+          ("FLT3", "D835Y"), ("NRAS", "Q61K"), ("TP53", "R175H"), ("EGFR", "L858R")]
 
 
 def to_hgvs3(change):
@@ -54,6 +62,23 @@ def main(n_per_template=8, seed=7):
                 "gene": r["Gene"],
                 "protein_change": r["Protein Change"],
             })
+    for q in questions:
+        q["relevant"] = [q["expected_source"]]
+
+    by_gene = {}
+    for r in rows:
+        by_gene.setdefault(r["Gene"], []).append(f"depmap:row{r['row_id']}")
+    multi = sorted(g for g, ids in by_gene.items() if g and 2 <= len(ids) <= 9)
+    for gene in rng.sample(multi, n_per_template):
+        questions.append({"style": "gene_list", "question": f"List every MOLT4 variant in {gene}.",
+                          "gene": gene, "relevant": by_gene[gene]})
+
+    present = {(r["Gene"], r["Protein Change"].removeprefix("p.")) for r in rows}
+    for gene, change in ABSENT:
+        assert (gene, change) not in present, (gene, change)
+        questions.append({"style": "absent", "question": f"Does MOLT4 carry {gene} {change}?",
+                          "gene": gene, "protein_change": f"p.{change}", "relevant": []})
+
     out = Path(__file__).with_name("questions.jsonl")
     out.write_text("".join(json.dumps(q) + "\n" for q in questions))
     print(f"Wrote {len(questions)} questions to {out}")

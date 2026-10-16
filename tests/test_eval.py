@@ -9,6 +9,8 @@ from eval import run
 from eval.scoring import is_refusal, parse_judgement, score_answer
 from rag_assistant import config
 
+TP53 = {"source_ids": ["depmap:row1535"], "gene": "TP53", "protein_change": "p.R306Ter",
+        "rsid": "rs121913344"}
 CASES = [json.loads(line) for line in open(Path(__file__).parent.parent / "eval" / "answers.jsonl")]
 
 
@@ -17,13 +19,24 @@ def test_answer_cases_are_well_formed():
     for c in CASES:
         assert c["category"] in {"fact", "list", "trap", "refusal"}
         assert c.get("must_include") or c.get("expect_refusal")
+        assert "relevant" in c and (c["relevant"] or c.get("expect_refusal"))
 
 
 def test_score_passes_correct_cited_answer():
     case = {"must_include": [["TP53"], ["R306", "Arg306"]], "expected_source": "depmap:row1535"}
     result = {"answer": "rs121913344 is TP53 p.Arg306Ter [depmap:row1535].",
-              "cited_sources": ["depmap:row1535"], "unverified_citations": []}
-    assert score_answer(case, result)["passed"]
+              "cited_sources": ["depmap:row1535"], "unverified_citations": [], "evidence": [TP53]}
+    s = score_answer(case, result, frozenset({"TP53"}))
+    assert s["passed"] and s["key_fact_recall"] == 1.0 and s["grounding"]["identifiers"] == 3
+    assert (s["citations"]["claims"], s["citations"]["supported_claims"]) == (1, 1)
+
+
+def test_ungrounded_identifier_fails_an_otherwise_correct_answer():
+    case = {"must_include": [["TP53"]], "expected_source": "depmap:row1535"}
+    result = {"answer": "TP53 R306Ter [depmap:row1535] is also rs555.",
+              "cited_sources": ["depmap:row1535"], "unverified_citations": [], "evidence": [TP53]}
+    s = score_answer(case, result, frozenset({"TP53"}))
+    assert s["correct"] and not s["passed"] and s["grounding"]["ungrounded"] == ["rs555"]
 
 
 def test_score_reports_each_failure():
@@ -63,7 +76,7 @@ def test_parse_judgement():
 def test_run_answers_and_summary():
     answers = {
         "q1": {"answer": "TP53 R306Ter [depmap:row1535]", "cited_sources": ["depmap:row1535"],
-               "unverified_citations": [], "model": "m", "evidence": []},
+               "unverified_citations": [], "model": "m", "evidence": [TP53]},
         "q2": {"answer": "Yes it is present.", "cited_sources": [], "unverified_citations": [],
                "model": "m", "evidence": []},
     }
@@ -85,6 +98,9 @@ def test_run_answers_and_summary():
     assert summary["errors"] == 1 and summary["passed"] == pytest.approx(1 / 3)
     assert summary["by_category"] == {"fact": 0.5, "refusal": 0.0}
     assert summary["faithfulness"] == 0.5
+    assert (summary["refusals_ok"], summary["refusal_cases"]) == (0, 1)
+    assert (summary["identifiers"], summary["ungrounded"]) == (1, 0)  # R306Ter; no gene list given
+    run.print_scorecard("m", summary, rows)  # every section renders with these numbers
 
 
 def test_parse_model():

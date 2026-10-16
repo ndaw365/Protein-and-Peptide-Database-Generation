@@ -6,10 +6,14 @@ Each case can set:
     must_not_include  substrings that must not appear
     expected_source   a source ID the answer should cite
     expect_refusal    true when the data has no answer and the assistant should say so
+    relevant          the DepMap source IDs a complete answer needs (context recall/precision)
+    expected_items    {"kind": "genes" | "changes", "values": [...]} for list precision/recall
 """
 
 import json
 import re
+
+from eval.metrics import citation_checks, context_scores, grounding, list_scores
 
 _REFUSAL_RE = re.compile(
     r"not found|no (record|data|information|variant|mutation|evidence|such)|not (in|present|"
@@ -24,12 +28,15 @@ def is_refusal(answer):
     return bool(_REFUSAL_RE.search(answer or ""))
 
 
-def score_answer(case, result):
-    """Checks for one answer. result is the dict returned by rag_assistant.llm.ask."""
+def score_answer(case, result, genes=frozenset()):
+    """Checks for one answer. result is the dict returned by rag_assistant.llm.ask.
+
+    genes is the set of MOLT4 gene symbols, used to find gene names in the answer.
+    """
     answer = result.get("answer", "")
     low = answer.lower()
-    missing = [group for group in case.get("must_include", [])
-               if not any(alt.lower() in low for alt in group)]
+    groups = case.get("must_include", [])
+    missing = [group for group in groups if not any(alt.lower() in low for alt in group)]
     forbidden = [s for s in case.get("must_not_include", []) if s.lower() in low]
     expect_refusal = case.get("expect_refusal", False)
     refused = is_refusal(answer)
@@ -37,14 +44,24 @@ def score_answer(case, result):
     cited_expected = expected_source is None or expected_source in result.get("cited_sources", [])
     unverified = len(result.get("unverified_citations", []))
     correct = not missing and not forbidden and (refused if expect_refusal else True)
+    evidence = result.get("evidence", [])
+    grounded = grounding(answer, case.get("question", ""), evidence, genes)
+    items = case.get("expected_items")
     return {
         "correct": correct,
+        "key_fact_recall": 1 - len(missing) / len(groups) if groups else None,
         "missing": [g[0] for g in missing],
         "forbidden": forbidden,
         "refusal_ok": refused == expect_refusal if expect_refusal else None,
+        # said "not found" on a question the data does answer, and missed the answer
+        "false_refusal": None if expect_refusal else refused and not correct,
         "cited_expected": cited_expected,
         "unverified_citations": unverified,
-        "passed": correct and cited_expected and unverified == 0,
+        "grounding": grounded,
+        "citations": citation_checks(answer, evidence, genes, skip=is_refusal),
+        "list": list_scores(answer, items["values"], items["kind"], genes) if items else None,
+        "context": context_scores(evidence, case["relevant"]) if case.get("relevant") else None,
+        "passed": correct and cited_expected and unverified == 0 and not grounded["ungrounded"],
     }
 
 

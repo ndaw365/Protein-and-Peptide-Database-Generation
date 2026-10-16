@@ -151,38 +151,73 @@ curl -sS -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1b
 ## Tests and evaluation
 
 ```bash
-python -m pytest                     # 88 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
-python eval/run.py                   # retrieval scorecard (no key)
-python eval/run.py --llm             # + answer scorecard (needs a key)
+python -m pytest                     # 101 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
+python eval/run.py                   # retrieval metrics (no key)
+python eval/run.py --llm             # + answer metrics on 18 hand-written cases (needs a key)
+python eval/run.py --llm --answers eval/answers_generated.jsonl   # + 32 cases generated from the data
 python eval/run.py --llm --judge     # + faithfulness: a second LLM call checks each claim against the evidence
+python eval/run.py --calibrate-judge # how often that judge catches 6 planted errors in 13 labelled answers
+python eval/run.py --llm --repeats 3 # + consistency across runs (3x the quota)
 python eval/run.py --llm --models gemini-3.6-flash,gemini-3.5-flash   # compare models side by side
 python eval/run.py --llm --delay 10 --only trap,braf-absent            # pace requests; run categories or case IDs
 ```
 
-Each case prints a progress line (`[3/18] helz2-dropped  PASS  4.2 s`). Free Gemini keys allow
-only a few requests per minute, and one case can make several requests. A rate-limited case
-waits 60 s and retries once (`--retry-wait`); add `--delay 10` if many cases still hit the
-limit.
+Every rate is shown with a 95% confidence interval, e.g. `94% [73-99]`. With 18 cases the
+intervals are wide, which is why the generated set exists.
 
-**Retrieval** (`eval/questions.jsonl`, 40 generated questions in 5 phrasings) reports top-1
-accuracy, recall@5 and latency against a plain CSV scan. It's currently 40/40 at about 0.3 ms,
-against 8/40 for the CSV scan. The questions come from the same data, so this checks the
-lookup logic, not open-ended questions.
+### Metrics
 
-**Answers** (`eval/answers.jsonl`, 18 hand-written cases with expected answers):
+| Group | Metric | What it measures |
+|-------|--------|------------------|
+| Retrieval | Hit rate@1, @5 | Share of single-variant questions with the right record first / in the top 5 |
+| | MRR | Mean of 1 / rank of the right record |
+| | Precision, recall, nDCG@10 | For "list every variant in GENE": right records returned, none missed, in order |
+| | No false exact match | For variants MOLT4 lacks (BRAF V600E, KRAS G12D, …): no record claimed as an exact match |
+| Context | Context recall, precision | Of the records a full answer needs, the share the model saw (first retrieval plus tool calls), and the share of what it saw that was needed |
+| Correctness | Correct, key-fact recall | Every expected fact present; share of expected facts present |
+| | List precision, recall, F1 | Genes or changes named vs the expected list |
+| | Abstention | Says "not found" when the data has no answer; wrongly says "not found" when it does |
+| Hallucination | Grounding | Share of identifiers in the answer (protein changes, rsIDs, peptide sequences, VCV IDs, MOLT4 genes) found in the evidence or question. Each ungrounded one is listed |
+| | Citation precision | Share of citations that point to a record the model saw and that is about the sentence citing it |
+| | Citation recall | Share of sentences whose identifiers are all in the records they cite |
+| Faithfulness | Judge score | Share of claims an LLM judge finds supported by the evidence (`--judge`) |
+| | Judge calibration | The judge's accuracy, precision and recall on answers with planted errors (wrong peptide residue, wrong ClinVar call, misread MS hit, a drug from outside knowledge, …) |
+| Reliability | Consistency | Share of cases with the same outcome in every run, and passing every run (`--repeats`) |
 
-| Category | What it checks | Example |
-|----------|----------------|---------|
-| fact | The key fact is in the answer | rs121913344 → TP53 R306Ter |
-| list | Every item is listed | NOTCH1's 4 variants; the 7 MS peptides that span a mutation |
-| trap | Subtle biology is right | PPP1CA D242N's MS hit doesn't span the mutation |
-| refusal | Says "not found" instead of guessing | BRAF V600E, KRAS, drug names |
+Current retrieval results (no key needed):
+- 40 single-variant lookups: hit@1 is 100% [91-100] and MRR is 1.00. A plain CSV scan gets
+  20% [10-35].
+- 8 gene lists: precision and recall are both 1.00.
+- 8 absent variants: none gets a false exact match.
+- Median latency is 0.3 ms.
 
-An answer **passes** when it's correct, cites the expected source, and has no unverified
-citations. The scorecard lists every failure with its reason, and the full answers are
-saved to `eval/results/` (git-ignored). Each comparison model runs without fallbacks, so its
-score is its own. The judge always uses the models in `.env`, so no model grades its own
-answers.
+These questions come from the same data, so they test the lookup logic, not open-ended
+questions.
+
+An answer **passes** when it's correct, cites the expected source, has no unverified
+citations, and has **no ungrounded identifiers**. Grounding and citation checks are plain code,
+not an LLM, so they can't be talked round. They only check identifiers, though; the judge
+covers claims without one ("is a hotspot"), and calibration shows how far to trust the judge.
+
+The answer sets:
+- `eval/answers.jsonl`: 18 hand-written cases in 4 categories:
+  - fact: rs121913344 → TP53 R306Ter
+  - list: the 7 MS peptides that span a mutation
+  - trap: PPP1CA D242N's MS hit doesn't span the mutation
+  - refusal: BRAF V600E, drug names
+- `eval/answers_generated.jsonl`: 32 fact cases whose answers come from the data: peptide
+  sequence, start/end, AlphaMissense class, UniProt ID.
+
+`python -m eval.make_questions` and `python -m eval.make_answers` rebuild the generated
+files. A test fails if they no longer match the data.
+
+The scorecard lists every failure with its reason, and full answers are saved to
+`eval/results/` (git-ignored). Each comparison model runs without fallbacks, so its score is
+its own. The judge always uses the models in `.env`, so no model grades its own answers.
+
+Free Gemini keys allow only a few requests per minute, and one case can make several. A
+rate-limited case waits 60 s and retries once (`--retry-wait`); add `--delay 10` if many
+still hit the limit.
 
 To improve the assistant: run the scorecard, change one thing (the prompt in
 `rag_assistant/llm.py`, the model, or the retrieval), and run it again. Add a case to
