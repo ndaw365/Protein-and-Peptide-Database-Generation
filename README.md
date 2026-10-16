@@ -151,12 +151,12 @@ curl -sS -H "x-goog-api-key: $KEY" https://generativelanguage.googleapis.com/v1b
 ## Tests and evaluation
 
 ```bash
-python -m pytest                     # 86 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
+python -m pytest                     # 88 tests; fake ClinVar and LLM, no keys (CI runs them on every push)
 python eval/run.py                   # retrieval scorecard (no key)
 python eval/run.py --llm             # + answer scorecard (needs a key)
 python eval/run.py --llm --judge     # + faithfulness: a second LLM call checks each claim against the evidence
 python eval/run.py --llm --models gemini-3.6-flash,gemini-3.5-flash   # compare models side by side
-python eval/run.py --llm --delay 10 --only trap,refusal                # pace requests; run some categories
+python eval/run.py --llm --delay 10 --only trap,braf-absent            # pace requests; run categories or case IDs
 ```
 
 Each case prints a progress line (`[3/18] helz2-dropped  PASS  4.2 s`). Free Gemini keys allow
