@@ -163,3 +163,15 @@ def test_rate_limit_twice_is_an_error_and_delay_spaces_cases():
                            log=lambda line: None, sleep=waits.append)
     assert [r["error"].split(";")[0] for r in rows] == ["gemini/gemini-3.6-flash RateLimitError 429"] * 2
     assert waits == [60, 5, 60]  # retry wait, delay before case 2, retry wait
+
+
+def test_select_cases_by_category_and_id():
+    assert run.select_cases(CASES, None) == CASES
+    picked = run.select_cases(CASES, "trap, braf-absent")
+    assert {c["id"] for c in picked} == {c["id"] for c in CASES if c["category"] == "trap"} | {"braf-absent"}
+    assert [c["id"] for c in picked] == [c["id"] for c in CASES if c in picked]  # file order kept
+
+
+def test_select_cases_rejects_unknown_names():
+    with pytest.raises(SystemExit, match="nope"):
+        run.select_cases(CASES, "fact,nope")

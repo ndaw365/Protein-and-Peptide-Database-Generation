@@ -112,6 +112,20 @@ def is_rate_limit(exc):
     return "RateLimitError" in str(exc) or "429" in str(exc)
 
 
+def select_cases(cases, only):
+    """Cases whose category or id is in the comma-separated `only`; all cases if empty."""
+    if not only:
+        return cases
+    wanted = {name.strip() for name in only.split(",") if name.strip()}
+    known = {c["category"] for c in cases} | {c["id"] for c in cases}
+    unknown = sorted(wanted - known)
+    if unknown:
+        sys.exit(f"Unknown --only name(s): {', '.join(unknown)}. Use a category "
+                 f"({', '.join(sorted({c['category'] for c in cases}))}) or a case ID "
+                 f"from eval/answers.jsonl.")
+    return [c for c in cases if c["category"] in wanted or c["id"] in wanted]
+
+
 def run_answers(cases, ask_fn, judge_fn=None, delay=0.0, retry_wait=60.0, log=print, sleep=time.sleep):
     """Ask every case and print one progress line each.
 
@@ -242,7 +256,8 @@ def main():
     parser.add_argument("--models", help="comma-separated models to compare, e.g. "
                                          "gemini-3.6-flash,openai/gpt-4o-mini")
     parser.add_argument("--judge", action="store_true", help="also judge faithfulness with an LLM")
-    parser.add_argument("--only", help="comma-separated categories to run: fact,list,trap,refusal")
+    parser.add_argument("--only", help="comma-separated categories (fact,list,trap,refusal) "
+                                       "and/or case IDs to run, e.g. trap,braf-absent")
     parser.add_argument("--delay", type=float, default=0.0,
                         help="seconds to wait between cases, to stay under per-minute quotas")
     parser.add_argument("--retry-wait", type=float, default=60.0,
@@ -263,10 +278,7 @@ def main():
         _providers()
     except NoProviderError as exc:
         sys.exit(str(exc))
-    cases = [json.loads(l) for l in open(args.answers)]
-    if args.only:
-        wanted = {c.strip() for c in args.only.split(",")}
-        cases = [c for c in cases if c["category"] in wanted]
+    cases = select_cases([json.loads(l) for l in open(args.answers)], args.only)
     judge = make_judge() if args.judge else None
     models = [parse_model(m) for m in args.models.split(",")] if args.models else [(None, None)]
     report = {}
